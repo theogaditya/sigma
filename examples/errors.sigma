@@ -1,0 +1,15 @@
+# Test file with intentional errors
+
+# Error 1: Missing closing quote
+fr name = "hello
+
+# Error 2: Invalid character
+fr x = 5 @ 3
+
+# Error 3: Missing parenthesis
+lowkey x == 5 {
+    say "oops"
+}
+
+# Error 4: Unexpected token
+fr = 10

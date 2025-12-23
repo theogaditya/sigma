@@ -1,0 +1,8 @@
+#!/usr/bin/env sigma
+# This script can be run directly: ./hello.sigma
+
+say "Hello, World!"
+say "This is a Sigma script with shebang support! 🔥"
+
+fr name = "Sigma"
+say name

@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/aditya/code/projects/lang-cus/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

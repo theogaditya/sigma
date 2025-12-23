@@ -1,0 +1,3 @@
+/home/aditya/code/projects/lang-cus/build/CMakeFiles/sigma.dir
+/home/aditya/code/projects/lang-cus/build/CMakeFiles/edit_cache.dir
+/home/aditya/code/projects/lang-cus/build/CMakeFiles/rebuild_cache.dir

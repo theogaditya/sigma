@@ -1,0 +1,31 @@
+# Example Sigma program to test lexer
+fr x = 0
+
+goon (x < 5) {
+    say x
+    fr x = x + 1
+    lowkey (x == 3) {
+        skip
+    }
+}
+
+vibe add(a, b) {
+    send a + b
+}
+
+say add(2, 3)
+
+# Test booleans and null
+fr isTrue = ongod
+fr isFalse = cap
+fr nothing = nah
+
+# Test string
+say "Hello, Sigma!"
+
+# Test comparison operators
+lowkey (x >= 5 && isTrue) {
+    say "x is big and true"
+} highkey {
+    say "nope"
+}

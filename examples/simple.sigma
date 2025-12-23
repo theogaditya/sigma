@@ -1,0 +1,12 @@
+# Simple test for code generation
+fr x = 5
+fr y = 3
+fr z = x + y
+say z
+
+# Test function
+vibe add(a, b) {
+    send a + b
+}
+
+say add(10, 20)
