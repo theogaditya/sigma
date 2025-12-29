@@ -55,59 +55,41 @@ jobs:
           path: release/sigma-linux-x86_64
 
   # ============================================================================
-  # Build for Windows x86_64
+  # Build for Windows x86_64 (using MSYS2/MinGW for proper LLVM dev support)
   # ============================================================================
   build-windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-llvm
+            mingw-w64-x86_64-clang
+            mingw-w64-x86_64-lld
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSVC
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Install LLVM
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "18.1"
-          directory: ${{ github.workspace }}/llvm
-
-      - name: Find LLVM cmake dir
-        id: llvm-path
-        shell: pwsh
-        run: |
-          $llvmDir = Get-ChildItem -Path "${{ github.workspace }}/llvm" -Recurse -Filter "LLVMConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($llvmDir) {
-            $dir = $llvmDir.DirectoryName
-            Write-Host "Found LLVM cmake at: $dir"
-            echo "LLVM_DIR=$dir" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "LLVMConfig.cmake not found, listing llvm directory:"
-            Get-ChildItem -Path "${{ github.workspace }}/llvm" -Recurse | Select-Object FullName
-            # Fall back to common paths
-            echo "LLVM_DIR=${{ github.workspace }}/llvm/lib/cmake/llvm" >> $env:GITHUB_OUTPUT
-          }
-
       - name: Configure CMake
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${{ steps.llvm-path.outputs.LLVM_DIR }}"
+          cmake -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release -j$(nproc)
 
-      - name: Find and package binary
+      - name: Package binary
         shell: pwsh
         run: |
-          mkdir -p release
-          $sigma = Get-ChildItem -Path build -Recurse -Filter "sigma.exe" | Select-Object -First 1
-          if ($sigma) {
-            Copy-Item $sigma.FullName -Destination "release/sigma-windows-x86_64.exe"
-            Write-Host "Found sigma.exe at: $($sigma.FullName)"
-          } else {
-            Write-Error "sigma.exe not found!"
-            Get-ChildItem -Path build -Recurse
-            exit 1
-          }
+          New-Item -ItemType Directory -Force -Path release
+          Copy-Item build/bin/sigma.exe -Destination release/sigma-windows-x86_64.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
