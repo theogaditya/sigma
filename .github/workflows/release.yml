@@ -72,9 +72,25 @@ jobs:
           version: "18.1"
           directory: ${{ github.workspace }}/llvm
 
+      - name: Find LLVM cmake dir
+        id: llvm-path
+        shell: pwsh
+        run: |
+          $llvmDir = Get-ChildItem -Path "${{ github.workspace }}/llvm" -Recurse -Filter "LLVMConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($llvmDir) {
+            $dir = $llvmDir.DirectoryName
+            Write-Host "Found LLVM cmake at: $dir"
+            echo "LLVM_DIR=$dir" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "LLVMConfig.cmake not found, listing llvm directory:"
+            Get-ChildItem -Path "${{ github.workspace }}/llvm" -Recurse | Select-Object FullName
+            # Fall back to common paths
+            echo "LLVM_DIR=${{ github.workspace }}/llvm/lib/cmake/llvm" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Configure CMake
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${{ github.workspace }}/llvm/lib/cmake/llvm"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${{ steps.llvm-path.outputs.LLVM_DIR }}"
 
       - name: Build
         run: cmake --build build --config Release

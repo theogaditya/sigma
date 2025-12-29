@@ -66,10 +66,10 @@ if(LLVM_CONFIG_EXECUTABLE AND NOT WIN32)
     
     include_directories(${LLVM_INCLUDE_DIR})
     
-    # For static linking
+    # For static linking - use specific components to avoid Polly dependency
     if(SIGMA_STATIC)
         execute_process(
-            COMMAND ${LLVM_CONFIG_EXECUTABLE} --libs --link-static
+            COMMAND ${LLVM_CONFIG_EXECUTABLE} --libs core support irreader bitwriter passes target analysis transformutils scalaropts instcombine native
             OUTPUT_VARIABLE LLVM_LIBS_RAW
             OUTPUT_STRIP_TRAILING_WHITESPACE
         )
@@ -80,31 +80,9 @@ if(LLVM_CONFIG_EXECUTABLE AND NOT WIN32)
         )
         separate_arguments(LLVM_LIBS_LIST NATIVE_COMMAND "${LLVM_LIBS_RAW}")
         separate_arguments(LLVM_SYSTEM_LIBS_LIST NATIVE_COMMAND "${LLVM_SYSTEM_LIBS_RAW}")
-        
-        # Filter out Polly libraries (not always installed)
-        set(LLVM_LINK_LIBS "")
-        foreach(lib ${LLVM_LIBS_LIST})
-            if(NOT lib MATCHES "Polly")
-                list(APPEND LLVM_LINK_LIBS ${lib})
-            endif()
-        endforeach()
-        list(APPEND LLVM_LINK_LIBS ${LLVM_SYSTEM_LIBS_LIST})
+        set(LLVM_LINK_LIBS ${LLVM_LIBS_LIST} ${LLVM_SYSTEM_LIBS_LIST})
     else()
-        # Dynamic linking - use specific components we need (avoids Polly dep)
-        execute_process(
-            COMMAND ${LLVM_CONFIG_EXECUTABLE} --libs core support native passes bitwriter analysis transformutils scalaropts instcombine
-            OUTPUT_VARIABLE LLVM_LIBS_RAW
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        separate_arguments(LLVM_LIBS_LIST NATIVE_COMMAND "${LLVM_LIBS_RAW}")
-        
-        # Filter out Polly libraries just in case
-        set(LLVM_LINK_LIBS "")
-        foreach(lib ${LLVM_LIBS_LIST})
-            if(NOT lib MATCHES "Polly")
-                list(APPEND LLVM_LINK_LIBS ${lib})
-            endif()
-        endforeach()
+        set(LLVM_LINK_LIBS LLVM)
     endif()
     
     set(LLVM_FOUND_VIA "llvm-config")
