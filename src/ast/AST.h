@@ -6,6 +6,7 @@
 #include <string>
 #include <variant>
 #include <optional>
+#include <cstdint>
 #include "../lexer/Token.h"
 
 namespace sigma {

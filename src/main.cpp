@@ -6,9 +6,16 @@
 #include <cstdio>
 #include <array>
 #include <memory>
-#include <unistd.h>
-#include <sys/wait.h>
 #include <algorithm>
+
+// Platform-specific includes
+#ifdef _WIN32
+    #include <windows.h>
+    #include <process.h>
+#else
+    #include <unistd.h>
+    #include <sys/wait.h>
+#endif
 
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
@@ -217,24 +224,43 @@ void runRepl() {
 
 // Check if a command exists in PATH
 bool commandExists(const std::string& cmd) {
+#ifdef _WIN32
+    std::string checkCmd = "where " + cmd + " > nul 2>&1";
+#else
     std::string checkCmd = "command -v " + cmd + " > /dev/null 2>&1";
+#endif
     return system(checkCmd.c_str()) == 0;
 }
 
 // Generate a unique temp directory
 std::string createTempDir() {
+#ifdef _WIN32
+    char tempPath[MAX_PATH];
+    char tempDir[MAX_PATH];
+    GetTempPathA(MAX_PATH, tempPath);
+    GetTempFileNameA(tempPath, "sig", 0, tempDir);
+    // GetTempFileName creates a file, delete it and create directory
+    DeleteFileA(tempDir);
+    CreateDirectoryA(tempDir, NULL);
+    return std::string(tempDir);
+#else
     char tmpl[] = "/tmp/sigma_XXXXXX";
     char* dir = mkdtemp(tmpl);
     if (dir == nullptr) {
         return "";
     }
     return std::string(dir);
+#endif
 }
 
 // Remove temp directory and contents
 void removeTempDir(const std::string& dir) {
+#ifdef _WIN32
+    std::string cmd = "rmdir /s /q \"" + dir + "\"";
+#else
     std::string cmd = "rm -rf " + dir;
-    system(cmd.c_str());
+#endif
+    (void)system(cmd.c_str());
 }
 
 // Compile and run a sigma program
@@ -287,9 +313,17 @@ int compileAndRun(const std::string& source, const std::string& filename) {
         return 1;
     }
 
-    std::string irFile = tempDir + "/program.ll";
-    std::string asmFile = tempDir + "/program.s";
-    std::string exeFile = tempDir + "/program";
+#ifdef _WIN32
+    std::string pathSep = "\\";
+    std::string exeSuffix = ".exe";
+#else
+    std::string pathSep = "/";
+    std::string exeSuffix = "";
+#endif
+
+    std::string irFile = tempDir + pathSep + "program.ll";
+    std::string asmFile = tempDir + pathSep + "program.s";
+    std::string exeFile = tempDir + pathSep + "program" + exeSuffix;
 
     // Write IR to file
     std::ofstream irOut(irFile);
@@ -345,7 +379,11 @@ int compileAndRun(const std::string& source, const std::string& filename) {
 
     // Step 6: Run the executable
     result = system(exeFile.c_str());
+#ifdef _WIN32
+    int exitCode = result;  // On Windows, system() returns the exit code directly
+#else
     int exitCode = WEXITSTATUS(result);
+#endif
 
     // Step 7: Cleanup
     removeTempDir(tempDir);
@@ -403,8 +441,14 @@ int compileToFile(const std::string& source, const std::string& filename, const 
         return 1;
     }
 
-    std::string irFile = tempDir + "/program.ll";
-    std::string asmFile = tempDir + "/program.s";
+#ifdef _WIN32
+    std::string pathSep = "\\";
+#else
+    std::string pathSep = "/";
+#endif
+
+    std::string irFile = tempDir + pathSep + "program.ll";
+    std::string asmFile = tempDir + pathSep + "program.s";
 
     // Write IR to file
     std::ofstream irOut(irFile);

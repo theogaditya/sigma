@@ -4,6 +4,7 @@
 #include <string>
 #include <variant>
 #include <ostream>
+#include <cstdint>
 
 namespace sigma {
 
