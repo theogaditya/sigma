@@ -73,43 +73,43 @@ CMakeFiles/sigma_tests.dir/tests/main.cpp.o: CMakeFiles/sigma_tests.dir/flags.ma
 CMakeFiles/sigma_tests.dir/tests/main.cpp.o: /home/aditya/code/projects/lang-cus/tests/main.cpp
 CMakeFiles/sigma_tests.dir/tests/main.cpp.o: CMakeFiles/sigma_tests.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/aditya/code/projects/lang-cus/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/sigma_tests.dir/tests/main.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/sigma_tests.dir/tests/main.cpp.o -MF CMakeFiles/sigma_tests.dir/tests/main.cpp.o.d -o CMakeFiles/sigma_tests.dir/tests/main.cpp.o -c /home/aditya/code/projects/lang-cus/tests/main.cpp
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/sigma_tests.dir/tests/main.cpp.o -MF CMakeFiles/sigma_tests.dir/tests/main.cpp.o.d -o CMakeFiles/sigma_tests.dir/tests/main.cpp.o -c /home/aditya/code/projects/lang-cus/tests/main.cpp
 
 CMakeFiles/sigma_tests.dir/tests/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/sigma_tests.dir/tests/main.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/aditya/code/projects/lang-cus/tests/main.cpp > CMakeFiles/sigma_tests.dir/tests/main.cpp.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/aditya/code/projects/lang-cus/tests/main.cpp > CMakeFiles/sigma_tests.dir/tests/main.cpp.i
 
 CMakeFiles/sigma_tests.dir/tests/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/sigma_tests.dir/tests/main.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/aditya/code/projects/lang-cus/tests/main.cpp -o CMakeFiles/sigma_tests.dir/tests/main.cpp.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/aditya/code/projects/lang-cus/tests/main.cpp -o CMakeFiles/sigma_tests.dir/tests/main.cpp.s
 
 CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o: CMakeFiles/sigma_tests.dir/flags.make
 CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o: /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp
 CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o: CMakeFiles/sigma_tests.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/aditya/code/projects/lang-cus/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o -MF CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o.d -o CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o -c /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o -MF CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o.d -o CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o -c /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp
 
 CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp > CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp > CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.i
 
 CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp -o CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/aditya/code/projects/lang-cus/src/lexer/Lexer.cpp -o CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.s
 
 CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o: CMakeFiles/sigma_tests.dir/flags.make
 CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o: /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp
 CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o: CMakeFiles/sigma_tests.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/aditya/code/projects/lang-cus/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o -MF CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o.d -o CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o -c /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o -MF CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o.d -o CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o -c /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp
 
 CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp > CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp > CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.i
 
 CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp -o CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/aditya/code/projects/lang-cus/src/parser/Parser.cpp -o CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.s
 
 # Object files for target sigma_tests
 sigma_tests_OBJECTS = \

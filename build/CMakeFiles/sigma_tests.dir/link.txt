@@ -1,1 +1,1 @@
-/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/sigma_tests.dir/tests/main.cpp.o CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o -o bin/sigma_tests 
+/usr/bin/g++ -O3 -DNDEBUG CMakeFiles/sigma_tests.dir/tests/main.cpp.o CMakeFiles/sigma_tests.dir/src/lexer/Lexer.cpp.o CMakeFiles/sigma_tests.dir/src/parser/Parser.cpp.o -o bin/sigma_tests 
