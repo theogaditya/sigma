@@ -144,6 +144,35 @@ private:
         return indent(level) + "(skip)";
     }
 
+    std::string printStmtNode(const SwitchStmt& s, int level) {
+        std::ostringstream ss;
+        ss << indent(level) << "(simp " << printExpr(*s.expression);
+        for (const auto& c : s.cases) {
+            ss << std::endl << indent(level + 1) << "(stan ";
+            if (c.value) {
+                ss << printExpr(*c.value);
+            } else {
+                ss << "ghost";
+            }
+            for (const auto& stmt : c.body) {
+                ss << std::endl << printStmt(*stmt, level + 2);
+            }
+            ss << ")";
+        }
+        ss << ")";
+        return ss.str();
+    }
+
+    std::string printStmtNode(const TryCatchStmt& s, int level) {
+        std::ostringstream ss;
+        ss << indent(level) << "(yeet";
+        ss << std::endl << printStmt(*s.tryBlock, level + 1);
+        ss << std::endl << indent(level) << " caught";
+        ss << std::endl << printStmt(*s.catchBlock, level + 1);
+        ss << ")";
+        return ss.str();
+    }
+
     // ========================================================================
     // Expression Printers
     // ========================================================================
@@ -153,6 +182,8 @@ private:
             using T = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<T, std::monostate>) {
                 return "nah";
+            } else if constexpr (std::is_same_v<T, int64_t>) {
+                return std::to_string(v);
             } else if constexpr (std::is_same_v<T, double>) {
                 std::ostringstream ss;
                 ss << v;
@@ -212,6 +243,60 @@ private:
         ss << "(" << e.op.lexeme << " ";
         ss << printExpr(*e.left) << " ";
         ss << printExpr(*e.right) << ")";
+        return ss.str();
+    }
+
+    std::string printExprNode(const CompoundAssignExpr& e) {
+        std::ostringstream ss;
+        ss << "(" << e.op.lexeme << " " << e.name.lexeme << " ";
+        ss << printExpr(*e.value) << ")";
+        return ss.str();
+    }
+
+    std::string printExprNode(const IncrementExpr& e) {
+        std::ostringstream ss;
+        if (e.isPrefix) {
+            ss << "(" << e.op.lexeme << " " << e.name.lexeme << ")";
+        } else {
+            ss << "(" << e.name.lexeme << " " << e.op.lexeme << ")";
+        }
+        return ss.str();
+    }
+
+    std::string printExprNode(const InterpStringExpr& e) {
+        std::ostringstream ss;
+        ss << "(interp-string";
+        for (size_t i = 0; i < e.stringParts.size(); i++) {
+            ss << " \"" << e.stringParts[i] << "\"";
+            if (i < e.exprParts.size()) {
+                ss << " {" << printExpr(*e.exprParts[i]) << "}";
+            }
+        }
+        ss << ")";
+        return ss.str();
+    }
+
+    std::string printExprNode(const ArrayExpr& e) {
+        std::ostringstream ss;
+        ss << "[";
+        for (size_t i = 0; i < e.elements.size(); i++) {
+            if (i > 0) ss << ", ";
+            ss << printExpr(*e.elements[i]);
+        }
+        ss << "]";
+        return ss.str();
+    }
+
+    std::string printExprNode(const IndexExpr& e) {
+        std::ostringstream ss;
+        ss << "(index " << printExpr(*e.object) << " " << printExpr(*e.index) << ")";
+        return ss.str();
+    }
+
+    std::string printExprNode(const IndexAssignExpr& e) {
+        std::ostringstream ss;
+        ss << "(index-assign " << printExpr(*e.object) << " " << printExpr(*e.index);
+        ss << " " << printExpr(*e.value) << ")";
         return ss.str();
     }
 };

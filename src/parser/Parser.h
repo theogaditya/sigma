@@ -45,6 +45,8 @@ private:
     StmtPtr returnStatement();
     StmtPtr breakStatement();
     StmtPtr continueStatement();
+    StmtPtr switchStatement();
+    StmtPtr tryCatchStatement();
     StmtPtr expressionStatement();
     StmtPtr block();
 
@@ -55,16 +57,24 @@ private:
     ExprPtr assignment();
     ExprPtr logicalOr();
     ExprPtr logicalAnd();
+    ExprPtr bitwiseOr();
+    ExprPtr bitwiseXor();
+    ExprPtr bitwiseAnd();
     ExprPtr equality();
     ExprPtr comparison();
+    ExprPtr shift();
     ExprPtr term();
     ExprPtr factor();
     ExprPtr unary();
+    ExprPtr postfix();
     ExprPtr call();
     ExprPtr primary();
 
     // Helper for parsing function call arguments
     ExprPtr finishCall(ExprPtr callee);
+    
+    // Helper for parsing interpolated strings
+    ExprPtr parseInterpString(const std::string& raw);
 
     // ========================================================================
     // Token navigation helpers

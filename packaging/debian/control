@@ -1,0 +1,18 @@
+Package: sigma-lang
+Version: 1.1.0
+Section: devel
+Priority: optional
+Architecture: amd64
+Depends: clang
+Maintainer: Your Name <your.email@example.com>
+Homepage: https://github.com/YOUR_USERNAME/sigma-lang
+Description: Sigma Programming Language Compiler
+ A Gen-Z themed programming language that compiles to native code
+ via LLVM. Features a fun, meme-inspired syntax while remaining
+ practical and educational.
+ .
+ Features:
+  - Compiles to native executables
+  - Interactive REPL mode
+  - LLVM backend for optimization
+  - Type checking and semantic analysis

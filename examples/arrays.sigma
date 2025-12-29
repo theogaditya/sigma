@@ -1,0 +1,40 @@
+# Arrays and Integer Types Test
+
+# Integer vs Float distinction
+fr integer = 42
+fr float = 3.14
+
+say "Integer: "
+say integer
+
+say "Float: "
+say float
+
+# Array creation
+fr numbers = [1, 2, 3, 4, 5]
+
+# Array access
+say "First number: "
+say numbers[0]
+
+say "Third number: "
+say numbers[2]
+
+# Array modification
+numbers[0] = 100
+say "Modified first: "
+say numbers[0]
+
+# Loop through array with index
+say "All numbers:"
+edge (fr i = 0, i < 5, i = i + 1) {
+    say numbers[i]
+}
+
+# Sum calculation
+fr sum = 0
+edge (fr i = 0, i < 5, i = i + 1) {
+    sum = sum + numbers[i]
+}
+say "Sum: "
+say sum

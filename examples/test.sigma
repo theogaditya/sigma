@@ -3,7 +3,7 @@ fr x = 0
 
 goon (x < 5) {
     say x
-    fr x = x + 1
+    x = x + 1
     lowkey (x == 3) {
         skip
     }

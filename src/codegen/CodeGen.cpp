@@ -19,6 +19,9 @@ CodeGen::CodeGen() {
     context_ = std::make_unique<llvm::LLVMContext>();
     module_ = std::make_unique<llvm::Module>("sigma_module", *context_);
     builder_ = std::make_unique<llvm::IRBuilder<>>(*context_);
+    
+    // Initialize global scope
+    pushScope();
 }
 
 CodeGen::~CodeGen() = default;
@@ -107,12 +110,55 @@ void CodeGen::generateStmt(const Stmt& stmt) {
             generateBreak(s);
         } else if constexpr (std::is_same_v<T, ContinueStmt>) {
             generateContinue(s);
+        } else if constexpr (std::is_same_v<T, SwitchStmt>) {
+            generateSwitch(s);
+        } else if constexpr (std::is_same_v<T, TryCatchStmt>) {
+            generateTryCatch(s);
         }
     }, stmt.node);
 }
 
 // fr x = expression
 void CodeGen::generateVarDecl(const VarDeclStmt& stmt) {
+    // Check if it's an array literal
+    if (auto* arrayExpr = std::get_if<ArrayExpr>(&stmt.initializer->node)) {
+        size_t size = arrayExpr->elements.size();
+        
+        // Create array type
+        llvm::ArrayType* arrayType = llvm::ArrayType::get(
+            llvm::Type::getDoubleTy(*context_), size);
+        
+        // Allocate array
+        llvm::Function* func = currentFunction_;
+        llvm::AllocaInst* alloca = builder_->CreateAlloca(arrayType, nullptr, stmt.name.lexeme);
+        
+        // Initialize elements
+        for (size_t i = 0; i < size; i++) {
+            llvm::Value* elemVal = generateExpr(*arrayExpr->elements[i]);
+            if (!elemVal) return;
+            
+            // Ensure it's a double
+            if (!elemVal->getType()->isDoubleTy()) {
+                if (elemVal->getType()->isIntegerTy()) {
+                    elemVal = builder_->CreateSIToFP(elemVal, llvm::Type::getDoubleTy(*context_), "todbl");
+                }
+            }
+            
+            // Store element
+            llvm::Value* indices[] = {
+                llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0),
+                llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), i)
+            };
+            llvm::Value* elemPtr = builder_->CreateGEP(arrayType, alloca, indices, "elemptr");
+            builder_->CreateStore(elemVal, elemPtr);
+        }
+        
+        // Use custom declaration with array size
+        VariableInfo info(alloca, "array", currentScopeDepth_, size);
+        scopeStack_.back()[stmt.name.lexeme] = info;
+        return;
+    }
+    
     llvm::Value* initVal = generateExpr(*stmt.initializer);
     if (!initVal) return;
 
@@ -130,18 +176,22 @@ void CodeGen::generateVarDecl(const VarDeclStmt& stmt) {
         typeStr = "number";
     }
 
-    // Create alloca for variable
+    // Create alloca for variable (in current scope)
     llvm::Function* func = currentFunction_;
-    llvm::IRBuilder<> tmpBuilder(&func->getEntryBlock(), func->getEntryBlock().begin());
-    llvm::AllocaInst* alloca = tmpBuilder.CreateAlloca(varType, nullptr, stmt.name.lexeme);
+    llvm::AllocaInst* alloca = createEntryBlockAlloca(func, stmt.name.lexeme, varType);
     
     builder_->CreateStore(initVal, alloca);
-    namedValues_[stmt.name.lexeme] = alloca;
-    variableTypes_[stmt.name.lexeme] = typeStr;
+    declareVariable(stmt.name.lexeme, alloca, typeStr);
 }
 
 // say expression
 void CodeGen::generatePrint(const PrintStmt& stmt) {
+    // Check if it's an interpolated string - handle specially
+    if (auto* interpExpr = std::get_if<InterpStringExpr>(&stmt.expression->node)) {
+        generateInterpStringPrint(*interpExpr);
+        return;
+    }
+    
     llvm::Value* value = generateExpr(*stmt.expression);
     if (!value) return;
 
@@ -173,21 +223,67 @@ void CodeGen::generatePrint(const PrintStmt& stmt) {
     builder_->CreateCall(printfFunc, args, "printfcall");
 }
 
+// Print interpolated string: say "hello {name}, you are {age} years old"
+void CodeGen::generateInterpStringPrint(const InterpStringExpr& expr) {
+    llvm::Function* printfFunc = getOrCreatePrintf();
+    
+    // Build format string and collect values
+    std::string formatStr;
+    std::vector<llvm::Value*> values;
+    
+    for (size_t i = 0; i < expr.stringParts.size(); i++) {
+        formatStr += expr.stringParts[i];
+        
+        if (i < expr.exprParts.size()) {
+            llvm::Value* val = generateExpr(*expr.exprParts[i]);
+            if (!val) continue;
+            
+            // Check the type and add appropriate format specifier
+            if (val->getType()->isDoubleTy()) {
+                formatStr += "%g";
+                values.push_back(val);
+            } else if (val->getType()->isPointerTy()) {
+                // Assume it's a string
+                formatStr += "%s";
+                values.push_back(val);
+            } else {
+                formatStr += "%g";
+                values.push_back(val);
+            }
+        }
+    }
+    
+    // Add newline
+    formatStr += "\n";
+    
+    // Create format string
+    llvm::Value* fmtStr = createGlobalString(formatStr, "interp_fmt");
+    
+    // Build args list
+    std::vector<llvm::Value*> args;
+    args.push_back(fmtStr);
+    for (auto& v : values) {
+        args.push_back(v);
+    }
+    
+    builder_->CreateCall(printfFunc, args, "printfcall");
+}
+
 void CodeGen::generateExprStmt(const ExprStmt& stmt) {
     generateExpr(*stmt.expression);
 }
 
 void CodeGen::generateBlock(const BlockStmt& stmt) {
-    // Save current variable scope (simple approach)
-    auto savedValues = namedValues_;
+    // Create new scope for block
+    pushScope();
     
     for (const auto& s : stmt.statements) {
         generateStmt(*s);
-        if (hadError_) return;
+        if (hadError_) break;
     }
     
     // Restore scope (variables declared in block go out of scope)
-    // For simplicity, we keep all variables visible (like Python)
+    popScope();
 }
 
 // lowkey (condition) { ... } highkey { ... }
@@ -340,14 +436,15 @@ void CodeGen::generateFuncDef(const FuncDefStmt& stmt) {
     // Save current state
     llvm::Function* savedFunc = currentFunction_;
     llvm::BasicBlock* savedBlock = builder_->GetInsertBlock();
-    auto savedValues = namedValues_;
-    auto savedTypes = variableTypes_;
+    auto savedScopeStack = scopeStack_;
+    int savedScopeDepth = currentScopeDepth_;
 
-    // Set up for new function
+    // Set up for new function with fresh scope
     builder_->SetInsertPoint(entry);
     currentFunction_ = func;
-    namedValues_.clear();
-    variableTypes_.clear();
+    scopeStack_.clear();
+    currentScopeDepth_ = 0;
+    pushScope();  // Function scope
 
     // Create allocas for parameters (all treated as numbers for now)
     size_t idx = 0;
@@ -357,8 +454,7 @@ void CodeGen::generateFuncDef(const FuncDefStmt& stmt) {
         
         llvm::AllocaInst* alloca = createEntryBlockAlloca(func, paramName);
         builder_->CreateStore(&arg, alloca);
-        namedValues_[paramName] = alloca;
-        variableTypes_[paramName] = "number";
+        declareVariable(paramName, alloca, "number");
         idx++;
     }
 
@@ -379,8 +475,8 @@ void CodeGen::generateFuncDef(const FuncDefStmt& stmt) {
 
     // Restore state
     currentFunction_ = savedFunc;
-    namedValues_ = savedValues;
-    variableTypes_ = savedTypes;
+    scopeStack_ = savedScopeStack;
+    currentScopeDepth_ = savedScopeDepth;
     if (savedBlock) {
         builder_->SetInsertPoint(savedBlock);
     }
@@ -439,6 +535,18 @@ llvm::Value* CodeGen::generateExpr(const Expr& expr) {
             return generateAssign(e);
         } else if constexpr (std::is_same_v<T, LogicalExpr>) {
             return generateLogical(e);
+        } else if constexpr (std::is_same_v<T, CompoundAssignExpr>) {
+            return generateCompoundAssign(e);
+        } else if constexpr (std::is_same_v<T, IncrementExpr>) {
+            return generateIncrement(e);
+        } else if constexpr (std::is_same_v<T, InterpStringExpr>) {
+            return generateInterpString(e);
+        } else if constexpr (std::is_same_v<T, ArrayExpr>) {
+            return generateArray(e);
+        } else if constexpr (std::is_same_v<T, IndexExpr>) {
+            return generateIndex(e);
+        } else if constexpr (std::is_same_v<T, IndexAssignExpr>) {
+            return generateIndexAssign(e);
         }
         return nullptr;
     }, expr.node);
@@ -447,7 +555,10 @@ llvm::Value* CodeGen::generateExpr(const Expr& expr) {
 llvm::Value* CodeGen::generateLiteral(const LiteralExpr& expr) {
     return std::visit([this](const auto& v) -> llvm::Value* {
         using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, double>) {
+        if constexpr (std::is_same_v<T, int64_t>) {
+            // Integer literal - convert to double for consistency
+            return llvm::ConstantFP::get(*context_, llvm::APFloat(static_cast<double>(v)));
+        } else if constexpr (std::is_same_v<T, double>) {
             return llvm::ConstantFP::get(*context_, llvm::APFloat(v));
         } else if constexpr (std::is_same_v<T, bool>) {
             return llvm::ConstantFP::get(*context_, llvm::APFloat(v ? 1.0 : 0.0));
@@ -462,23 +573,27 @@ llvm::Value* CodeGen::generateLiteral(const LiteralExpr& expr) {
 }
 
 llvm::Value* CodeGen::generateIdentifier(const IdentifierExpr& expr) {
-    auto it = namedValues_.find(expr.name.lexeme);
-    if (it == namedValues_.end()) {
+    VariableInfo* varInfo = lookupVariable(expr.name.lexeme);
+    if (!varInfo) {
         error("Unknown variable: " + expr.name.lexeme);
         return nullptr;
     }
     
+    // Arrays: return the pointer to the array (don't load)
+    if (varInfo->type == "array") {
+        return varInfo->allocaInst;
+    }
+    
     // Load based on the variable's type
-    auto typeIt = variableTypes_.find(expr.name.lexeme);
-    if (typeIt != variableTypes_.end() && typeIt->second == "string") {
+    if (varInfo->type == "string") {
         // Load as pointer for strings
         return builder_->CreateLoad(llvm::PointerType::get(*context_, 0), 
-                                     it->second, expr.name.lexeme);
+                                     varInfo->allocaInst, expr.name.lexeme);
     }
     
     // Default: load as double
     return builder_->CreateLoad(llvm::Type::getDoubleTy(*context_), 
-                                 it->second, expr.name.lexeme);
+                                 varInfo->allocaInst, expr.name.lexeme);
 }
 
 llvm::Value* CodeGen::generateBinary(const BinaryExpr& expr) {
@@ -495,6 +610,10 @@ llvm::Value* CodeGen::generateBinary(const BinaryExpr& expr) {
             return builder_->CreateFMul(left, right, "multmp");
         case TokenType::SLASH:
             return builder_->CreateFDiv(left, right, "divtmp");
+        case TokenType::PERCENT: {
+            // Modulo for floats: a % b = a - floor(a/b) * b
+            return builder_->CreateFRem(left, right, "modtmp");
+        }
         case TokenType::LT: {
             llvm::Value* cmp = createFCmp(llvm::CmpInst::FCMP_OLT, left, right, "cmptmp");
             return builder_->CreateUIToFP(cmp, llvm::Type::getDoubleTy(*context_), "booltmp");
@@ -519,6 +638,37 @@ llvm::Value* CodeGen::generateBinary(const BinaryExpr& expr) {
             llvm::Value* cmp = createFCmp(llvm::CmpInst::FCMP_ONE, left, right, "cmptmp");
             return builder_->CreateUIToFP(cmp, llvm::Type::getDoubleTy(*context_), "booltmp");
         }
+        // Bitwise operators (convert to int, operate, convert back)
+        case TokenType::BIT_AND: {
+            llvm::Value* leftInt = builder_->CreateFPToSI(left, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* rightInt = builder_->CreateFPToSI(right, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* result = builder_->CreateAnd(leftInt, rightInt, "andtmp");
+            return builder_->CreateSIToFP(result, llvm::Type::getDoubleTy(*context_), "tofp");
+        }
+        case TokenType::BIT_OR: {
+            llvm::Value* leftInt = builder_->CreateFPToSI(left, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* rightInt = builder_->CreateFPToSI(right, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* result = builder_->CreateOr(leftInt, rightInt, "ortmp");
+            return builder_->CreateSIToFP(result, llvm::Type::getDoubleTy(*context_), "tofp");
+        }
+        case TokenType::BIT_XOR: {
+            llvm::Value* leftInt = builder_->CreateFPToSI(left, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* rightInt = builder_->CreateFPToSI(right, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* result = builder_->CreateXor(leftInt, rightInt, "xortmp");
+            return builder_->CreateSIToFP(result, llvm::Type::getDoubleTy(*context_), "tofp");
+        }
+        case TokenType::LSHIFT: {
+            llvm::Value* leftInt = builder_->CreateFPToSI(left, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* rightInt = builder_->CreateFPToSI(right, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* result = builder_->CreateShl(leftInt, rightInt, "shltmp");
+            return builder_->CreateSIToFP(result, llvm::Type::getDoubleTy(*context_), "tofp");
+        }
+        case TokenType::RSHIFT: {
+            llvm::Value* leftInt = builder_->CreateFPToSI(left, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* rightInt = builder_->CreateFPToSI(right, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* result = builder_->CreateAShr(leftInt, rightInt, "shrtmp");
+            return builder_->CreateSIToFP(result, llvm::Type::getDoubleTy(*context_), "tofp");
+        }
         default:
             error("Unknown binary operator");
             return nullptr;
@@ -537,6 +687,12 @@ llvm::Value* CodeGen::generateUnary(const UnaryExpr& expr) {
             llvm::Value* zero = llvm::ConstantFP::get(*context_, llvm::APFloat(0.0));
             llvm::Value* cmp = createFCmp(llvm::CmpInst::FCMP_OEQ, operand, zero, "nottmp");
             return builder_->CreateUIToFP(cmp, llvm::Type::getDoubleTy(*context_), "booltmp");
+        }
+        case TokenType::BIT_NOT: {
+            // ~x -> bitwise NOT (convert to int, NOT, convert back)
+            llvm::Value* intVal = builder_->CreateFPToSI(operand, llvm::Type::getInt64Ty(*context_), "toint");
+            llvm::Value* result = builder_->CreateNot(intVal, "bitnot");
+            return builder_->CreateSIToFP(result, llvm::Type::getDoubleTy(*context_), "tofp");
         }
         default:
             error("Unknown unary operator");
@@ -589,31 +745,29 @@ llvm::Value* CodeGen::generateAssign(const AssignExpr& expr) {
     llvm::Value* value = generateExpr(*expr.value);
     if (!value) return nullptr;
 
-    auto it = namedValues_.find(expr.name.lexeme);
-    if (it == namedValues_.end()) {
+    VariableInfo* varInfo = lookupVariable(expr.name.lexeme);
+    if (!varInfo) {
         error("Unknown variable in assignment: " + expr.name.lexeme);
         return nullptr;
     }
 
     // Check if type is changing
     std::string newType = value->getType()->isPointerTy() ? "string" : "number";
-    auto typeIt = variableTypes_.find(expr.name.lexeme);
     
-    if (typeIt != variableTypes_.end() && typeIt->second != newType) {
+    if (varInfo->type != newType) {
         // Type is changing - need to create a new alloca with correct type
         llvm::Type* varType = value->getType()->isPointerTy() 
             ? llvm::PointerType::get(*context_, 0)
             : llvm::Type::getDoubleTy(*context_);
         
-        llvm::Function* func = currentFunction_;
-        llvm::IRBuilder<> tmpBuilder(&func->getEntryBlock(), func->getEntryBlock().begin());
-        llvm::AllocaInst* alloca = tmpBuilder.CreateAlloca(varType, nullptr, expr.name.lexeme);
+        llvm::AllocaInst* alloca = createEntryBlockAlloca(currentFunction_, expr.name.lexeme, varType);
         
-        namedValues_[expr.name.lexeme] = alloca;
-        variableTypes_[expr.name.lexeme] = newType;
+        // Update the variable in current scope
+        varInfo->allocaInst = alloca;
+        varInfo->type = newType;
         builder_->CreateStore(value, alloca);
     } else {
-        builder_->CreateStore(value, it->second);
+        builder_->CreateStore(value, varInfo->allocaInst);
     }
     
     return value;
@@ -626,57 +780,418 @@ llvm::Value* CodeGen::generateLogical(const LogicalExpr& expr) {
 
     llvm::Function* func = builder_->GetInsertBlock()->getParent();
     llvm::Value* leftBool = toBool(left);
+    
+    // Store current block for PHI node
+    llvm::BasicBlock* entryBB = builder_->GetInsertBlock();
 
     if (expr.op.type == TokenType::OR) {
         // a || b: if a is true, result is 1.0, else evaluate b
         llvm::BasicBlock* rhsBB = llvm::BasicBlock::Create(*context_, "or.rhs", func);
-        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context_, "or.merge");
+        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context_, "or.merge", func);
 
         builder_->CreateCondBr(leftBool, mergeBB, rhsBB);
 
-        // RHS
+        // RHS evaluation
         builder_->SetInsertPoint(rhsBB);
         llvm::Value* right = generateExpr(*expr.right);
         if (!right) return nullptr;
         llvm::Value* rightBool = toBool(right);
         llvm::Value* rightResult = builder_->CreateUIToFP(rightBool, 
             llvm::Type::getDoubleTy(*context_), "ortmp");
+        llvm::BasicBlock* rhsEndBB = builder_->GetInsertBlock();  // May have changed
         builder_->CreateBr(mergeBB);
-        rhsBB = builder_->GetInsertBlock();
 
-        // Merge
-        func->insert(func->end(), mergeBB);
+        // Merge block
         builder_->SetInsertPoint(mergeBB);
         llvm::PHINode* phi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 2, "orphi");
-        phi->addIncoming(llvm::ConstantFP::get(*context_, llvm::APFloat(1.0)), 
-                         func->begin()->getNextNode() ? &*std::prev(func->end(), 2) : &func->getEntryBlock());
-        phi->addIncoming(rightResult, rhsBB);
+        phi->addIncoming(llvm::ConstantFP::get(*context_, llvm::APFloat(1.0)), entryBB);
+        phi->addIncoming(rightResult, rhsEndBB);
         return phi;
     } else {
         // a && b: if a is false, result is 0.0, else evaluate b
         llvm::BasicBlock* rhsBB = llvm::BasicBlock::Create(*context_, "and.rhs", func);
-        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context_, "and.merge");
+        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context_, "and.merge", func);
 
-        llvm::BasicBlock* currentBB = builder_->GetInsertBlock();
         builder_->CreateCondBr(leftBool, rhsBB, mergeBB);
 
-        // RHS
+        // RHS evaluation
         builder_->SetInsertPoint(rhsBB);
         llvm::Value* right = generateExpr(*expr.right);
         if (!right) return nullptr;
         llvm::Value* rightBool = toBool(right);
         llvm::Value* rightResult = builder_->CreateUIToFP(rightBool, 
             llvm::Type::getDoubleTy(*context_), "andtmp");
+        llvm::BasicBlock* rhsEndBB = builder_->GetInsertBlock();  // May have changed
         builder_->CreateBr(mergeBB);
-        rhsBB = builder_->GetInsertBlock();
 
-        // Merge
-        func->insert(func->end(), mergeBB);
+        // Merge block
         builder_->SetInsertPoint(mergeBB);
         llvm::PHINode* phi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 2, "andphi");
-        phi->addIncoming(llvm::ConstantFP::get(*context_, llvm::APFloat(0.0)), currentBB);
-        phi->addIncoming(rightResult, rhsBB);
+        phi->addIncoming(llvm::ConstantFP::get(*context_, llvm::APFloat(0.0)), entryBB);
+        phi->addIncoming(rightResult, rhsEndBB);
         return phi;
+    }
+}
+
+// Compound assignment: x += 5, x -= 3, etc.
+llvm::Value* CodeGen::generateCompoundAssign(const CompoundAssignExpr& expr) {
+    // Get current value
+    VariableInfo* varInfo = lookupVariable(expr.name.lexeme);
+    if (!varInfo) {
+        error("Unknown variable in compound assignment: " + expr.name.lexeme);
+        return nullptr;
+    }
+    
+    llvm::Value* currentVal = builder_->CreateLoad(llvm::Type::getDoubleTy(*context_), 
+                                                    varInfo->allocaInst, expr.name.lexeme);
+    llvm::Value* rhs = generateExpr(*expr.value);
+    if (!rhs) return nullptr;
+    
+    llvm::Value* result = nullptr;
+    switch (expr.op.type) {
+        case TokenType::PLUS_EQ:
+            result = builder_->CreateFAdd(currentVal, rhs, "addtmp");
+            break;
+        case TokenType::MINUS_EQ:
+            result = builder_->CreateFSub(currentVal, rhs, "subtmp");
+            break;
+        case TokenType::STAR_EQ:
+            result = builder_->CreateFMul(currentVal, rhs, "multmp");
+            break;
+        case TokenType::SLASH_EQ:
+            result = builder_->CreateFDiv(currentVal, rhs, "divtmp");
+            break;
+        case TokenType::PERCENT_EQ:
+            result = builder_->CreateFRem(currentVal, rhs, "modtmp");
+            break;
+        default:
+            error("Unknown compound assignment operator");
+            return nullptr;
+    }
+    
+    builder_->CreateStore(result, varInfo->allocaInst);
+    return result;
+}
+
+// Increment/Decrement: x++, ++x, x--, --x
+llvm::Value* CodeGen::generateIncrement(const IncrementExpr& expr) {
+    VariableInfo* varInfo = lookupVariable(expr.name.lexeme);
+    if (!varInfo) {
+        error("Unknown variable in increment/decrement: " + expr.name.lexeme);
+        return nullptr;
+    }
+    
+    llvm::Value* currentVal = builder_->CreateLoad(llvm::Type::getDoubleTy(*context_), 
+                                                    varInfo->allocaInst, expr.name.lexeme);
+    
+    llvm::Value* one = llvm::ConstantFP::get(*context_, llvm::APFloat(1.0));
+    llvm::Value* newVal = nullptr;
+    
+    if (expr.op.type == TokenType::PLUS_PLUS) {
+        newVal = builder_->CreateFAdd(currentVal, one, "inctmp");
+    } else {
+        newVal = builder_->CreateFSub(currentVal, one, "dectmp");
+    }
+    
+    builder_->CreateStore(newVal, varInfo->allocaInst);
+    
+    // Prefix returns new value, postfix returns old value
+    return expr.isPrefix ? newVal : currentVal;
+}
+
+// Interpolated string: "hello {name}, you are {age} years old"
+llvm::Value* CodeGen::generateInterpString(const InterpStringExpr& expr) {
+    // Build a combined format string and collect values
+    std::string formatStr;
+    std::vector<llvm::Value*> values;
+    
+    for (size_t i = 0; i < expr.stringParts.size(); i++) {
+        formatStr += expr.stringParts[i];
+        
+        if (i < expr.exprParts.size()) {
+            llvm::Value* val = generateExpr(*expr.exprParts[i]);
+            if (!val) continue;
+            
+            // Check the type and add appropriate format specifier
+            if (val->getType()->isDoubleTy()) {
+                formatStr += "%g";
+                values.push_back(val);
+            } else if (val->getType()->isPointerTy()) {
+                // Assume it's a string
+                formatStr += "%s";
+                values.push_back(val);
+            } else {
+                formatStr += "%g";
+                values.push_back(val);
+            }
+        }
+    }
+    
+    // Return the format string as a global string (for use in print)
+    // Store the values in a way we can retrieve them for printf
+    // For now, just return the format string - the print statement will handle it
+    return createGlobalString(formatStr, "interp_str");
+}
+
+// Array literal: [1, 2, 3]
+llvm::Value* CodeGen::generateArray(const ArrayExpr& expr) {
+    size_t size = expr.elements.size();
+    
+    // Create array type (array of doubles for now)
+    llvm::ArrayType* arrayType = llvm::ArrayType::get(
+        llvm::Type::getDoubleTy(*context_), size);
+    
+    // Allocate array on stack
+    llvm::AllocaInst* arrayAlloca = builder_->CreateAlloca(arrayType, nullptr, "array");
+    
+    // Initialize elements
+    for (size_t i = 0; i < size; i++) {
+        llvm::Value* elemVal = generateExpr(*expr.elements[i]);
+        if (!elemVal) return nullptr;
+        
+        // Ensure it's a double
+        if (!elemVal->getType()->isDoubleTy()) {
+            if (elemVal->getType()->isIntegerTy()) {
+                elemVal = builder_->CreateSIToFP(elemVal, llvm::Type::getDoubleTy(*context_), "todbl");
+            }
+        }
+        
+        // Get pointer to array element
+        llvm::Value* indices[] = {
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0),
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), i)
+        };
+        llvm::Value* elemPtr = builder_->CreateGEP(arrayType, arrayAlloca, indices, "elemptr");
+        builder_->CreateStore(elemVal, elemPtr);
+    }
+    
+    // Return pointer to the array (cast to generic pointer)
+    return arrayAlloca;
+}
+
+// Array index access: arr[0]
+llvm::Value* CodeGen::generateIndex(const IndexExpr& expr) {
+    // Get the array name from the identifier
+    auto* identExpr = std::get_if<IdentifierExpr>(&expr.object->node);
+    if (!identExpr) {
+        error("Array index access requires an identifier");
+        return nullptr;
+    }
+    
+    VariableInfo* varInfo = lookupVariable(identExpr->name.lexeme);
+    if (!varInfo || varInfo->type != "array") {
+        error("Variable is not an array: " + identExpr->name.lexeme);
+        return nullptr;
+    }
+    
+    llvm::Value* indexVal = generateExpr(*expr.index);
+    if (!indexVal) return nullptr;
+    
+    // Convert index to integer
+    llvm::Value* indexInt = builder_->CreateFPToSI(indexVal, 
+        llvm::Type::getInt64Ty(*context_), "idx");
+    
+    // Create the array type using stored size
+    llvm::ArrayType* arrayType = llvm::ArrayType::get(
+        llvm::Type::getDoubleTy(*context_), varInfo->arraySize);
+    
+    // Get element pointer
+    llvm::Value* indices[] = {
+        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0),
+        indexInt
+    };
+    
+    llvm::Value* elemPtr = builder_->CreateGEP(arrayType, varInfo->allocaInst, indices, "elemptr");
+    
+    // Load and return the element
+    return builder_->CreateLoad(llvm::Type::getDoubleTy(*context_), elemPtr, "elem");
+}
+
+// Array index assignment: arr[0] = value
+llvm::Value* CodeGen::generateIndexAssign(const IndexAssignExpr& expr) {
+    // Get the array name from the identifier
+    auto* identExpr = std::get_if<IdentifierExpr>(&expr.object->node);
+    if (!identExpr) {
+        error("Array index assignment requires an identifier");
+        return nullptr;
+    }
+    
+    VariableInfo* varInfo = lookupVariable(identExpr->name.lexeme);
+    if (!varInfo || varInfo->type != "array") {
+        error("Variable is not an array: " + identExpr->name.lexeme);
+        return nullptr;
+    }
+    
+    llvm::Value* indexVal = generateExpr(*expr.index);
+    if (!indexVal) return nullptr;
+    
+    llvm::Value* value = generateExpr(*expr.value);
+    if (!value) return nullptr;
+    
+    // Convert index to integer
+    llvm::Value* indexInt = builder_->CreateFPToSI(indexVal, 
+        llvm::Type::getInt64Ty(*context_), "idx");
+    
+    // Create the array type using stored size
+    llvm::ArrayType* arrayType = llvm::ArrayType::get(
+        llvm::Type::getDoubleTy(*context_), varInfo->arraySize);
+    
+    // Get element pointer
+    llvm::Value* indices[] = {
+        llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0),
+        indexInt
+    };
+    
+    llvm::Value* elemPtr = builder_->CreateGEP(arrayType, varInfo->allocaInst, indices, "elemptr");
+    
+    // Store the value
+    builder_->CreateStore(value, elemPtr);
+    
+    return value;
+}
+
+// Switch statement
+void CodeGen::generateSwitch(const SwitchStmt& stmt) {
+    llvm::Value* switchVal = generateExpr(*stmt.expression);
+    if (!switchVal) return;
+    
+    llvm::Function* func = builder_->GetInsertBlock()->getParent();
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(*context_, "switch.end");
+    llvm::BasicBlock* defaultBB = nullptr;
+    
+    // Find default case
+    for (const auto& c : stmt.cases) {
+        if (c.isDefault) {
+            defaultBB = llvm::BasicBlock::Create(*context_, "switch.default", func);
+            break;
+        }
+    }
+    
+    if (!defaultBB) {
+        defaultBB = mergeBB;
+    }
+    
+    // Generate case blocks
+    std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> caseBlocks;
+    for (const auto& c : stmt.cases) {
+        if (!c.isDefault) {
+            llvm::BasicBlock* caseBB = llvm::BasicBlock::Create(*context_, "switch.case", func);
+            llvm::Value* caseVal = generateExpr(*c.value);
+            caseBlocks.push_back({caseVal, caseBB});
+        }
+    }
+    
+    // Create cascading comparisons (since we use floating point, can't use LLVM switch)
+    for (size_t i = 0; i < caseBlocks.size(); i++) {
+        llvm::Value* cmp = createFCmp(llvm::CmpInst::FCMP_OEQ, switchVal, caseBlocks[i].first, "cmptmp");
+        
+        llvm::BasicBlock* nextBB = (i + 1 < caseBlocks.size()) 
+            ? llvm::BasicBlock::Create(*context_, "switch.next", func) 
+            : defaultBB;
+        
+        builder_->CreateCondBr(cmp, caseBlocks[i].second, nextBB);
+        builder_->SetInsertPoint(nextBB);
+    }
+    
+    // If no cases, jump to default
+    if (caseBlocks.empty()) {
+        builder_->CreateBr(defaultBB);
+    }
+    
+    // Generate case bodies
+    size_t caseIdx = 0;
+    for (const auto& c : stmt.cases) {
+        llvm::BasicBlock* caseBB;
+        if (c.isDefault) {
+            caseBB = defaultBB;
+        } else {
+            caseBB = caseBlocks[caseIdx++].second;
+        }
+        
+        builder_->SetInsertPoint(caseBB);
+        for (const auto& s : c.body) {
+            generateStmt(*s);
+        }
+        
+        if (!builder_->GetInsertBlock()->getTerminator()) {
+            builder_->CreateBr(mergeBB);
+        }
+    }
+    
+    // Continue after switch
+    func->insert(func->end(), mergeBB);
+    builder_->SetInsertPoint(mergeBB);
+}
+
+// Try-catch statement
+// NOTE: Full exception handling requires LLVM's invoke/landingpad which needs
+// personality functions and proper exception runtime support.
+// This simplified version executes try block and skips catch on success.
+void CodeGen::generateTryCatch(const TryCatchStmt& stmt) {
+    // For now, we implement a basic version that:
+    // 1. Executes the try block
+    // 2. The catch block is generated but only reachable if we add explicit error checking
+    
+    llvm::Function* func = builder_->GetInsertBlock()->getParent();
+    
+    llvm::BasicBlock* tryBB = llvm::BasicBlock::Create(*context_, "try", func);
+    llvm::BasicBlock* catchBB = llvm::BasicBlock::Create(*context_, "catch", func);
+    llvm::BasicBlock* endBB = llvm::BasicBlock::Create(*context_, "tryend", func);
+    
+    // Jump to try block
+    builder_->CreateBr(tryBB);
+    
+    // Try block
+    builder_->SetInsertPoint(tryBB);
+    generateStmt(*stmt.tryBlock);
+    if (!builder_->GetInsertBlock()->getTerminator()) {
+        builder_->CreateBr(endBB);  // Success - skip catch
+    }
+    
+    // Catch block (currently unreachable without proper exception support)
+    builder_->SetInsertPoint(catchBB);
+    generateStmt(*stmt.catchBlock);
+    if (!builder_->GetInsertBlock()->getTerminator()) {
+        builder_->CreateBr(endBB);
+    }
+    
+    // Continue after try-catch
+    builder_->SetInsertPoint(endBB);
+    
+    // TODO: Implement proper LLVM exception handling with invoke/landingpad
+    // This requires linking with a C++ exception runtime
+}
+
+// ============================================================================
+// Scope Management
+// ============================================================================
+
+void CodeGen::pushScope() {
+    scopeStack_.push_back({});
+    currentScopeDepth_++;
+}
+
+void CodeGen::popScope() {
+    if (!scopeStack_.empty()) {
+        scopeStack_.pop_back();
+        currentScopeDepth_--;
+    }
+}
+
+VariableInfo* CodeGen::lookupVariable(const std::string& name) {
+    // Search from innermost to outermost scope
+    for (auto it = scopeStack_.rbegin(); it != scopeStack_.rend(); ++it) {
+        auto varIt = it->find(name);
+        if (varIt != it->end()) {
+            return &varIt->second;
+        }
+    }
+    return nullptr;
+}
+
+void CodeGen::declareVariable(const std::string& name, llvm::AllocaInst* alloca, const std::string& type) {
+    if (!scopeStack_.empty()) {
+        scopeStack_.back()[name] = VariableInfo(alloca, type, currentScopeDepth_);
     }
 }
 
@@ -685,10 +1200,14 @@ llvm::Value* CodeGen::generateLogical(const LogicalExpr& expr) {
 // ============================================================================
 
 llvm::AllocaInst* CodeGen::createEntryBlockAlloca(llvm::Function* func, 
-                                                   const std::string& varName) {
+                                                   const std::string& varName,
+                                                   llvm::Type* type) {
     llvm::IRBuilder<> tmpBuilder(&func->getEntryBlock(), 
                                   func->getEntryBlock().begin());
-    return tmpBuilder.CreateAlloca(llvm::Type::getDoubleTy(*context_), nullptr, varName);
+    if (!type) {
+        type = llvm::Type::getDoubleTy(*context_);
+    }
+    return tmpBuilder.CreateAlloca(type, nullptr, varName);
 }
 
 llvm::Function* CodeGen::getOrCreatePrintf() {
@@ -720,6 +1239,12 @@ llvm::Value* CodeGen::getOrCreateFormatString(const std::string& str, const std:
 }
 
 llvm::Value* CodeGen::createGlobalString(const std::string& str, const std::string& name) {
+    // Check if we already created this exact string (deduplication)
+    auto it = stringLiterals_.find(str);
+    if (it != stringLiterals_.end()) {
+        return it->second;
+    }
+    
     // Create a constant array for the string (including null terminator)
     llvm::Constant* strConstant = llvm::ConstantDataArray::getString(*context_, str, true);
     
@@ -734,13 +1259,17 @@ llvm::Value* CodeGen::createGlobalString(const std::string& str, const std::stri
     );
     
     // Return a pointer to the first element (GEP to get i8*)
-    return llvm::ConstantExpr::getGetElementPtr(
+    llvm::Value* strPtr = llvm::ConstantExpr::getGetElementPtr(
         strConstant->getType(), gv, 
         llvm::ArrayRef<llvm::Constant*>{
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0)
         }
     );
+    
+    // Cache for future use
+    stringLiterals_[str] = strPtr;
+    return strPtr;
 }
 
 llvm::Function* CodeGen::createMainFunction() {

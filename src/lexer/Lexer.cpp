@@ -9,6 +9,7 @@ const std::unordered_map<std::string, TokenType> Lexer::keywords_ = {
     {"fr",      TokenType::FR},
     {"say",     TokenType::SAY},
     {"lowkey",  TokenType::LOWKEY},
+    {"midkey",  TokenType::MIDKEY},
     {"highkey", TokenType::HIGHKEY},
     {"goon",    TokenType::GOON},
     {"vibe",    TokenType::VIBE},
@@ -18,7 +19,12 @@ const std::unordered_map<std::string, TokenType> Lexer::keywords_ = {
     {"nah",     TokenType::NAH},
     {"skip",    TokenType::SKIP},
     {"mog",     TokenType::MOG},
-    {"edge",    TokenType::EDGE}
+    {"edge",    TokenType::EDGE},
+    {"simp",    TokenType::SIMP},
+    {"stan",    TokenType::STAN},
+    {"ghost",   TokenType::GHOST},
+    {"yeet",    TokenType::YEET},
+    {"caught",  TokenType::CAUGHT}
 };
 
 Lexer::Lexer(std::string source) : source_(std::move(source)) {}
@@ -44,13 +50,35 @@ void Lexer::scanToken() {
         case ')': addToken(TokenType::RPAREN); break;
         case '{': addToken(TokenType::LBRACE); break;
         case '}': addToken(TokenType::RBRACE); break;
+        case '[': addToken(TokenType::LBRACKET); break;
+        case ']': addToken(TokenType::RBRACKET); break;
         case ',': addToken(TokenType::COMMA); break;
-        case '+': addToken(TokenType::PLUS); break;
-        case '-': addToken(TokenType::MINUS); break;
-        case '*': addToken(TokenType::STAR); break;
-        case '/': addToken(TokenType::SLASH); break;
+        case ':': addToken(TokenType::COLON); break;
+        case '~': addToken(TokenType::BIT_NOT); break;
+        case '^': addToken(TokenType::BIT_XOR); break;
 
-        // One or two character tokens
+        // Multi-character operators
+        case '+':
+            if (match('+')) addToken(TokenType::PLUS_PLUS);
+            else if (match('=')) addToken(TokenType::PLUS_EQ);
+            else addToken(TokenType::PLUS);
+            break;
+        case '-':
+            if (match('-')) addToken(TokenType::MINUS_MINUS);
+            else if (match('=')) addToken(TokenType::MINUS_EQ);
+            else addToken(TokenType::MINUS);
+            break;
+        case '*':
+            addToken(match('=') ? TokenType::STAR_EQ : TokenType::STAR);
+            break;
+        case '/':
+            addToken(match('=') ? TokenType::SLASH_EQ : TokenType::SLASH);
+            break;
+        case '%':
+            addToken(match('=') ? TokenType::PERCENT_EQ : TokenType::PERCENT);
+            break;
+
+        // Comparison and assignment
         case '!':
             addToken(match('=') ? TokenType::NEQ : TokenType::NOT);
             break;
@@ -58,26 +86,24 @@ void Lexer::scanToken() {
             addToken(match('=') ? TokenType::EQ : TokenType::ASSIGN);
             break;
         case '<':
-            addToken(match('=') ? TokenType::LEQ : TokenType::LT);
+            if (match('<')) addToken(TokenType::LSHIFT);
+            else if (match('=')) addToken(TokenType::LEQ);
+            else addToken(TokenType::LT);
             break;
         case '>':
-            addToken(match('=') ? TokenType::GEQ : TokenType::GT);
+            if (match('>')) addToken(TokenType::RSHIFT);
+            else if (match('=')) addToken(TokenType::GEQ);
+            else addToken(TokenType::GT);
             break;
 
-        // Two-character tokens (logical operators)
+        // Logical and bitwise operators
         case '&':
-            if (match('&')) {
-                addToken(TokenType::AND);
-            } else {
-                error("Expected '&&' for logical AND");
-            }
+            if (match('&')) addToken(TokenType::AND);
+            else addToken(TokenType::BIT_AND);
             break;
         case '|':
-            if (match('|')) {
-                addToken(TokenType::OR);
-            } else {
-                error("Expected '||' for logical OR");
-            }
+            if (match('|')) addToken(TokenType::OR);
+            else addToken(TokenType::BIT_OR);
             break;
 
         // Comments start with #
@@ -195,15 +221,36 @@ void Lexer::scanString() {
 
     // Extract string value (without quotes)
     std::string value = source_.substr(start_ + 1, current_ - start_ - 2);
-    addToken(TokenType::STRING, value);
+    
+    // Check if it's an interpolated string (contains {})
+    bool hasInterpolation = false;
+    for (size_t i = 0; i < value.length(); i++) {
+        if (value[i] == '{') {
+            // Make sure there's a closing }
+            size_t end = value.find('}', i);
+            if (end != std::string::npos) {
+                hasInterpolation = true;
+                break;
+            }
+        }
+    }
+    
+    if (hasInterpolation) {
+        addToken(TokenType::INTERP_STRING, value);
+    } else {
+        addToken(TokenType::STRING, value);
+    }
 }
 
 void Lexer::scanNumber() {
     // Consume all digits
     while (isDigit(peek())) advance();
 
+    bool isFloat = false;
+    
     // Look for decimal part
     if (peek() == '.' && isDigit(peekNext())) {
+        isFloat = true;
         // Consume the '.'
         advance();
 
@@ -213,8 +260,14 @@ void Lexer::scanNumber() {
 
     // Parse the number
     std::string numStr = source_.substr(start_, current_ - start_);
-    double value = std::stod(numStr);
-    addToken(TokenType::NUMBER, value);
+    
+    if (isFloat) {
+        double value = std::stod(numStr);
+        addToken(TokenType::NUMBER, value);
+    } else {
+        int64_t value = std::stoll(numStr);
+        addToken(TokenType::NUMBER, value);
+    }
 }
 
 void Lexer::scanIdentifier() {

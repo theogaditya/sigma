@@ -6,6 +6,7 @@
 #include <map>
 #include <vector>
 #include <stack>
+#include <unordered_map>
 
 // LLVM headers
 #include <llvm/IR/LLVMContext.h>
@@ -22,6 +23,19 @@
 namespace sigma {
 
 // ============================================================================
+// Variable Information for Symbol Table
+// ============================================================================
+struct VariableInfo {
+    llvm::AllocaInst* allocaInst;  // Renamed from 'alloca' (reserved builtin)
+    std::string type;  // "number", "string", "bool", "array"
+    int scopeDepth;
+    size_t arraySize;  // For arrays, the number of elements
+    
+    VariableInfo(llvm::AllocaInst* a = nullptr, const std::string& t = "number", int depth = 0, size_t arrSize = 0)
+        : allocaInst(a), type(t), scopeDepth(depth), arraySize(arrSize) {}
+};
+
+// ============================================================================
 // CodeGen - LLVM IR Generator
 // ============================================================================
 // 
@@ -30,6 +44,7 @@ namespace sigma {
 // non-zero = true). Strings will be handled as global constants.
 //
 // Variables are stored using alloca (stack allocation).
+// Proper lexical scoping is implemented with scope stack.
 // ============================================================================
 
 class CodeGen {
@@ -58,17 +73,17 @@ private:
     // Current function being compiled
     llvm::Function* currentFunction_ = nullptr;
 
-    // Symbol table for variables (name -> alloca instruction)
-    std::map<std::string, llvm::AllocaInst*> namedValues_;
-    
-    // Type table for variables (name -> type: "number", "string", "bool")
-    std::map<std::string, std::string> variableTypes_;
+    // Scope stack for proper lexical scoping
+    // Each scope level is a map of variable name -> VariableInfo
+    std::vector<std::unordered_map<std::string, VariableInfo>> scopeStack_;
+    int currentScopeDepth_ = 0;
 
     // Function table (name -> function)
     std::map<std::string, llvm::Function*> functions_;
 
-    // Cache for format strings
+    // Cache for format strings and string literals
     std::map<std::string, llvm::Value*> formatStrings_;
+    std::map<std::string, llvm::Value*> stringLiterals_;  // String deduplication
 
     // For break/continue: stack of loop blocks
     struct LoopInfo {
@@ -86,6 +101,7 @@ private:
     void generateStmt(const Stmt& stmt);
     void generateVarDecl(const VarDeclStmt& stmt);
     void generatePrint(const PrintStmt& stmt);
+    void generateInterpStringPrint(const InterpStringExpr& expr);
     void generateExprStmt(const ExprStmt& stmt);
     void generateBlock(const BlockStmt& stmt);
     void generateIf(const IfStmt& stmt);
@@ -95,6 +111,8 @@ private:
     void generateReturn(const ReturnStmt& stmt);
     void generateBreak(const BreakStmt& stmt);
     void generateContinue(const ContinueStmt& stmt);
+    void generateSwitch(const SwitchStmt& stmt);
+    void generateTryCatch(const TryCatchStmt& stmt);
 
     // ========================================================================
     // Expression Code Generation
@@ -108,14 +126,27 @@ private:
     llvm::Value* generateGrouping(const GroupingExpr& expr);
     llvm::Value* generateAssign(const AssignExpr& expr);
     llvm::Value* generateLogical(const LogicalExpr& expr);
+    llvm::Value* generateCompoundAssign(const CompoundAssignExpr& expr);
+    llvm::Value* generateIncrement(const IncrementExpr& expr);
+    llvm::Value* generateInterpString(const InterpStringExpr& expr);
+    llvm::Value* generateArray(const ArrayExpr& expr);
+    llvm::Value* generateIndex(const IndexExpr& expr);
+    llvm::Value* generateIndexAssign(const IndexAssignExpr& expr);
 
     // ========================================================================
     // Helper Functions
     // ========================================================================
     
+    // Scope management
+    void pushScope();
+    void popScope();
+    VariableInfo* lookupVariable(const std::string& name);
+    void declareVariable(const std::string& name, llvm::AllocaInst* alloca, const std::string& type);
+    
     // Create alloca instruction in entry block of function
     llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func, 
-                                              const std::string& varName);
+                                              const std::string& varName,
+                                              llvm::Type* type = nullptr);
 
     // Create the printf function declaration
     llvm::Function* getOrCreatePrintf();

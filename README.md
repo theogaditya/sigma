@@ -1,445 +1,259 @@
-# Sigma Language Documentation 🔥
+# Sigma Language 🔥
 
 > A Gen-Z themed programming language that's *no cap* bussin'
 
-## Overview
+Sigma is a fun, beginner-friendly programming language with meme-inspired syntax that compiles to blazing fast native code.
 
-Sigma is a dynamically-typed programming language with a fun, Gen-Z inspired syntax. It compiles to LLVM IR, making it both educational and practical.
+## ⚡ Quick Install
 
-## Installation
-
-### Building from Source
-
+### Linux / macOS
 ```bash
-# Clone and build
-git clone <repo>
-cd lang-cus
-mkdir build && cd build
-cmake ..
-make
-
-# Optional: Install system-wide
-sudo ../install.sh
+curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/sigma-lang/main/packaging/install.sh | bash
 ```
 
-### Requirements
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/YOUR_USERNAME/sigma-lang/main/packaging/install.ps1 | iex
+```
 
-- C++17 compatible compiler (GCC 7+ or Clang 5+)
-- LLVM 17+ development libraries
-- CMake 3.16+
-- clang (for runtime compilation)
+### Arch Linux (AUR)
+```bash
+yay -S sigma-lang
+```
+
+### Ubuntu/Debian (.deb)
+```bash
+# Download from releases page
+sudo dpkg -i sigma-lang_1.1.0_amd64.deb
+```
 
 ---
 
-## Quick Start
+## 🚀 Hello World
 
-### Running Programs
+Create a file called `hello.sigma`:
 
+```sigma
+say "Hello, World! 🔥"
+```
+
+Run it:
 ```bash
-# Run a .sigma file directly (compiles and executes)
-sigma program.sigma
-
-# Or if not installed:
-./bin/sigma program.sigma
-```
-
-### Command Line Options
-
-```
-Usage: sigma [options] [script.sigma]
-
-Options:
-  --run            Compile and run the program (default)
-  -o <file>        Compile to standalone executable
-  --emit-ir        Output LLVM IR to stdout
-  --tokens         Show lexer tokens (debugging)
-  --ast            Show AST structure (debugging)
-  -v, --version    Show version information
-  -h, --help       Show help message
-```
-
-### Examples
-
-```bash
-# Run a program (default behavior)
 sigma hello.sigma
-
-# Compile to executable
-sigma -o myapp hello.sigma
-./myapp
-
-# Generate LLVM IR
-sigma --emit-ir program.sigma > program.ll
-
-# Debug: view tokens
-sigma --tokens program.sigma
-
-# Debug: view AST
-sigma --ast program.sigma
-
-# Start interactive REPL
-sigma
 ```
 
-### Making Scripts Executable
-
-Sigma supports shebang for direct script execution:
-
-```sigma
-#!/usr/bin/env sigma
-# Save as: hello.sigma
-
-say "Hello from Sigma!"
-```
-
-```bash
-chmod +x hello.sigma
-./hello.sigma
-```
+**That's it!** No config files, no setup, just code and run.
 
 ---
 
-## REPL Mode
-
-Start the interactive REPL by running `sigma` with no arguments:
-
-```
-$ sigma
-Sigma Language REPL v1.0.0
-Type code to compile, 'exit' to quit, or '...' for multi-line mode.
-
-sigma> say "Hello!"
-; ModuleID = 'sigma_module'
-...
-
-sigma> ...
-...   vibe add(a, b) {
-...       send a + b
-...   }
-...   
-sigma> exit
-Goodbye! Stay sigma. 💪
-```
-
-**Multi-line mode:** Type `...` to enter multi-line mode, then press Enter on an empty line to execute.
-
----
-
-## Language Reference
-
-### Comments
-
-```sigma
-# This is a comment
-# Comments start with # and go to end of line
-```
+## 📚 Learn Sigma in 5 Minutes
 
 ### Variables
-
-Use `fr` (for real) to declare variables:
-
 ```sigma
-fr name = "Sigma"
-fr age = 21
-fr score = 99.5
+fr name = "Sigma"       # String
+fr age = 21             # Integer  
+fr score = 99.5         # Float
 fr isAwesome = ongod    # true
 fr isBoring = cap       # false
-fr nothing = nah        # null
 ```
 
-### Data Types
-
-| Type | Example | Description |
-|------|---------|-------------|
-| Number | `42`, `3.14` | Double-precision floating point |
-| String | `"hello"` | Text in double quotes |
-| Boolean | `ongod`, `cap` | true/false |
-| Null | `nah` | Absence of value |
-
-### Output
-
-Use `say` to print values:
-
+### Print Stuff
 ```sigma
-say "Hello, World!"
-say 42
-say x + y
+say "Hello!"            # Print with newline
+say "Score: " + score   # String concatenation
 ```
 
-### Operators
-
-#### Arithmetic
+### Conditions
 ```sigma
-fr a = 10 + 5    # Addition: 15
-fr b = 10 - 5    # Subtraction: 5
-fr c = 10 * 5    # Multiplication: 50
-fr d = 10 / 5    # Division: 2
-fr e = -42       # Negation
-```
-
-#### Comparison
-```sigma
-fr a = 5 < 10    # Less than
-fr b = 5 > 10    # Greater than
-fr c = 5 <= 10   # Less than or equal
-fr d = 5 >= 10   # Greater than or equal
-fr e = 5 == 10   # Equal
-fr f = 5 != 10   # Not equal
-```
-
-#### Logical
-```sigma
-fr a = ongod && cap    # AND (short-circuit)
-fr b = ongod || cap    # OR (short-circuit)
-fr c = !ongod          # NOT
-```
-
-### Control Flow
-
-#### If/Else (`lowkey`/`highkey`)
-
-```sigma
-fr score = 85
-
-lowkey (score >= 90) {
-    say "You're goated!"
-} highkey (score >= 70) {
-    say "Pretty based"
-} highkey {
-    say "Not very sigma of you"
+lowkey age >= 18 {
+    say "You're an adult"
+} nocap {
+    say "Still a kid"
 }
 ```
 
-#### While Loop (`goon`)
-
+### Loops
 ```sigma
-fr i = 0
-goon (i < 5) {
-    say i
-    fr i = i + 1
-}
-```
-
-#### For Loop (`edge`)
-
-```sigma
-edge (fr i = 0; i < 10; fr i = i + 1) {
+# Count to 5
+yolo i = 1; i <= 5; i++ {
     say i
 }
-```
 
-#### Break and Continue
-
-- `mog` - Break out of loop
-- `skip` - Skip to next iteration
-
-```sigma
-fr i = 0
-goon (i < 10) {
-    fr i = i + 1
-    
-    lowkey (i == 3) {
-        skip    # Skip printing 3
-    }
-    
-    lowkey (i == 7) {
-        mog     # Stop at 7
-    }
-    
-    say i
+# While loop
+fr count = 0
+bet count < 3 {
+    say count
+    count++
 }
-# Prints: 1, 2, 4, 5, 6
 ```
 
 ### Functions
-
-Define functions with `vibe`, return with `send`:
-
 ```sigma
 vibe greet(name) {
-    say "Hello, "
-    say name
+    say "Hey " + name + "!"
 }
 
 vibe add(a, b) {
-    send a + b
+    send a + b      # 'send' = return
 }
 
-vibe factorial(n) {
-    lowkey (n <= 1) {
-        send 1
-    }
-    send n * factorial(n - 1)
-}
-
-# Call functions
-greet("Sigma")
+greet("fam")
 say add(10, 20)
-say factorial(5)    # 120
 ```
 
----
-
-## Keyword Reference
-
-| Sigma | Traditional | Description |
-|-------|-------------|-------------|
-| `fr` | `var`/`let` | Variable declaration |
-| `say` | `print` | Output to console |
-| `lowkey` | `if` | Conditional |
-| `highkey` | `else` | Alternative branch |
-| `goon` | `while` | While loop |
-| `edge` | `for` | For loop |
-| `vibe` | `function` | Function definition |
-| `send` | `return` | Return from function |
-| `ongod` | `true` | Boolean true |
-| `cap` | `false` | Boolean false |
-| `nah` | `null` | Null value |
-| `mog` | `break` | Exit loop |
-| `skip` | `continue` | Next iteration |
-
----
-
-## Example Programs
-
-### Hello World
+### Arrays
 ```sigma
-say "Hello, World!"
-```
+fr numbers = [1, 2, 3, 4, 5]
+say numbers[0]          # Access: 1
+numbers[0] = 100        # Modify
 
-### FizzBuzz
-```sigma
-edge (fr i = 1; i <= 100; fr i = i + 1) {
-    lowkey (i % 15 == 0) {
-        say "FizzBuzz"
-    } highkey (i % 3 == 0) {
-        say "Fizz"
-    } highkey (i % 5 == 0) {
-        say "Buzz"
-    } highkey {
-        say i
-    }
+# Loop through array
+yolo i = 0; i < 5; i++ {
+    say numbers[i]
 }
-```
-
-### Fibonacci
-```sigma
-vibe fib(n) {
-    lowkey (n <= 1) {
-        send n
-    }
-    send fib(n - 1) + fib(n - 2)
-}
-
-edge (fr i = 0; i < 10; fr i = i + 1) {
-    say fib(i)
-}
-```
-
-### Prime Check
-```sigma
-vibe isPrime(n) {
-    lowkey (n < 2) {
-        send cap
-    }
-    
-    fr i = 2
-    goon (i * i <= n) {
-        lowkey (n % i == 0) {
-            send cap
-        }
-        fr i = i + 1
-    }
-    send ongod
-}
-
-# Find primes up to 50
-edge (fr n = 2; n <= 50; fr n = n + 1) {
-    lowkey (isPrime(n)) {
-        say n
-    }
-}
-```
-
-### Calculator
-```sigma
-vibe calculate(a, op, b) {
-    lowkey (op == 1) {
-        send a + b
-    } highkey (op == 2) {
-        send a - b
-    } highkey (op == 3) {
-        send a * b
-    } highkey (op == 4) {
-        send a / b
-    }
-    send 0
-}
-
-say calculate(10, 1, 5)    # 15 (addition)
-say calculate(10, 2, 5)    # 5  (subtraction)
-say calculate(10, 3, 5)    # 50 (multiplication)
-say calculate(10, 4, 5)    # 2  (division)
 ```
 
 ---
 
-## Error Messages
-
-The compiler provides helpful error messages:
+## 🎯 Command Reference
 
 ```
-[ERROR] test.sigma:5:10
-    |
-  5 |     say x +
-    |          ^
-Syntax Error: Expected expression
+sigma [options] [file.sigma]
+
+Options:
+  (no args)          Start interactive REPL
+  file.sigma         Run a program (default)
+  -o <output>        Compile to executable
+  --emit-ir          Output LLVM IR
+  --tokens           Debug: show tokens
+  --ast              Debug: show AST
+  -v, --version      Show version
+  -h, --help         Show help
 ```
 
----
-
-## Architecture
-
-```
-Source Code (.sigma)
-        │
-        ▼
-    ┌───────┐
-    │ Lexer │  → Tokens
-    └───────┘
-        │
-        ▼
-    ┌────────┐
-    │ Parser │  → AST
-    └────────┘
-        │
-        ▼
-    ┌─────────┐
-    │ CodeGen │  → LLVM IR
-    └─────────┘
-        │
-        ▼
-    LLVM Tools (llc/clang)
-        │
-        ▼
-    Executable
+### Examples
+```bash
+sigma                        # Start REPL
+sigma hello.sigma            # Run program
+sigma -o hello hello.sigma   # Compile to ./hello
+./hello                      # Run compiled binary
 ```
 
 ---
 
-## Tips
+## 🗣️ Syntax Cheat Sheet
 
-1. **Semicolons are optional** - Sigma uses newlines as statement terminators
-2. **Everything is a double** - Numbers are 64-bit floating point
-3. **Booleans are numbers** - `ongod` = 1.0, `cap` = 0.0
-4. **Short-circuit evaluation** - `&&` and `||` don't evaluate the right side if unnecessary
+| Sigma | Meaning |
+|-------|---------|
+| `fr` | Declare variable |
+| `say` | Print |
+| `lowkey` | if |
+| `nocap` | else |
+| `bet` | while |
+| `yolo` | for |
+| `vibe` | function |
+| `send` | return |
+| `ongod` | true |
+| `cap` | false |
+| `nah` | null |
+| `dip` | break |
+| `keepitup` | continue |
 
 ---
 
-## License
+## 🛠️ Building from Source
 
-MIT License - Go wild, no cap! 🚀
+### Requirements
+- C++17 compiler (GCC 9+ or Clang 10+)
+- CMake 3.16+
+- LLVM 17 or 18 development libraries
+- clang (for runtime compilation)
+
+### Ubuntu/Debian
+```bash
+sudo apt install build-essential cmake llvm-18 llvm-18-dev clang-18
+
+git clone https://github.com/YOUR_USERNAME/sigma-lang.git
+cd sigma-lang
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+
+# Run tests
+./bin/sigma_tests
+
+# Install (optional)
+sudo make install
+```
+
+### Arch Linux
+```bash
+sudo pacman -S base-devel cmake llvm clang
+
+git clone https://github.com/YOUR_USERNAME/sigma-lang.git
+cd sigma-lang
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### macOS
+```bash
+brew install cmake llvm@18
+
+git clone https://github.com/YOUR_USERNAME/sigma-lang.git
+cd sigma-lang
+mkdir build && cd build
+cmake .. -DLLVM_CONFIG_EXECUTABLE=$(brew --prefix llvm@18)/bin/llvm-config
+make -j$(sysctl -n hw.ncpu)
+```
+
+### Windows
+```powershell
+# Install Visual Studio 2022 with C++ workload
+# Install LLVM from https://releases.llvm.org/
+
+git clone https://github.com/YOUR_USERNAME/sigma-lang.git
+cd sigma-lang
+mkdir build && cd build
+cmake ..
+cmake --build . --config Release
+```
 
 ---
 
-*Stay sigma, stay based* 💪
+## 📁 Project Structure
+
+```
+sigma-lang/
+├── src/
+│   ├── main.cpp           # CLI entry point
+│   ├── lexer/             # Tokenizer
+│   ├── parser/            # AST builder
+│   ├── semantic/          # Type checking
+│   └── codegen/           # LLVM code generation
+├── examples/              # Example programs
+├── tests/                 # Unit tests
+└── packaging/             # Install scripts & packages
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+- Report bugs
+- Suggest features
+- Submit pull requests
+
+---
+
+## 📄 License
+
+MIT License - do whatever you want with it!
+
+---
+
+<p align="center">
+  <b>Stay sigma. 💪</b>
+</p>

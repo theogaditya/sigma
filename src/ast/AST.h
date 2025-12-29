@@ -22,11 +22,12 @@ using StmtPtr = std::unique_ptr<Stmt>;
 // EXPRESSION NODES
 // ============================================================================
 
-// Literal values: numbers, strings, booleans, null
+// Literal values: numbers (int/float), strings, booleans, null
 struct LiteralExpr {
-    // Value can be: double (number), string, bool, or monostate (nah/null)
-    std::variant<std::monostate, double, std::string, bool> value;
+    // Value can be: int64_t, double (float), string, bool, or monostate (nah/null)
+    std::variant<std::monostate, int64_t, double, std::string, bool> value;
 
+    explicit LiteralExpr(int64_t val) : value(val) {}
     explicit LiteralExpr(double val) : value(val) {}
     explicit LiteralExpr(std::string val) : value(std::move(val)) {}
     explicit LiteralExpr(bool val) : value(val) {}
@@ -95,6 +96,64 @@ struct LogicalExpr {
         : left(std::move(left)), op(std::move(op)), right(std::move(right)) {}
 };
 
+// Compound assignment: x += 5, x -= 3, etc.
+struct CompoundAssignExpr {
+    Token name;
+    Token op;       // +=, -=, *=, /=, %=
+    ExprPtr value;
+
+    CompoundAssignExpr(Token name, Token op, ExprPtr value)
+        : name(std::move(name)), op(std::move(op)), value(std::move(value)) {}
+};
+
+// Increment/Decrement: x++, ++x, x--, --x
+struct IncrementExpr {
+    Token name;
+    Token op;       // ++ or --
+    bool isPrefix;  // true for ++x, false for x++
+
+    IncrementExpr(Token name, Token op, bool isPrefix)
+        : name(std::move(name)), op(std::move(op)), isPrefix(isPrefix) {}
+};
+
+// Interpolated string: "hello {name}, you are {age} years old"
+// Parts alternate between string literals and expressions
+struct InterpStringExpr {
+    std::vector<std::string> stringParts;  // Static string parts
+    std::vector<ExprPtr> exprParts;        // Expressions to interpolate
+    
+    InterpStringExpr(std::vector<std::string> stringParts, std::vector<ExprPtr> exprParts)
+        : stringParts(std::move(stringParts)), exprParts(std::move(exprParts)) {}
+};
+// Array literal: [1, 2, 3] or [\"a\", \"b\", \"c\"]
+struct ArrayExpr {
+    std::vector<ExprPtr> elements;
+    
+    explicit ArrayExpr(std::vector<ExprPtr> elements) 
+        : elements(std::move(elements)) {}
+};
+
+// Array/string index access: arr[0], str[1]
+struct IndexExpr {
+    ExprPtr object;    // The array or string being indexed
+    Token bracket;     // The '[' token for error reporting
+    ExprPtr index;     // The index expression
+    
+    IndexExpr(ExprPtr object, Token bracket, ExprPtr index)
+        : object(std::move(object)), bracket(std::move(bracket)), index(std::move(index)) {}
+};
+
+// Array index assignment: arr[0] = value
+struct IndexAssignExpr {
+    ExprPtr object;    // The array being indexed
+    Token bracket;     // The '[' token for error reporting
+    ExprPtr index;     // The index expression
+    ExprPtr value;     // The value to assign
+    
+    IndexAssignExpr(ExprPtr object, Token bracket, ExprPtr index, ExprPtr value)
+        : object(std::move(object)), bracket(std::move(bracket)), 
+          index(std::move(index)), value(std::move(value)) {}
+};
 // Expression variant - holds any expression type
 using ExprVariant = std::variant<
     LiteralExpr,
@@ -104,7 +163,13 @@ using ExprVariant = std::variant<
     CallExpr,
     GroupingExpr,
     AssignExpr,
-    LogicalExpr
+    LogicalExpr,
+    CompoundAssignExpr,
+    IncrementExpr,
+    InterpStringExpr,
+    ArrayExpr,
+    IndexExpr,
+    IndexAssignExpr
 >;
 
 // Expression wrapper
@@ -218,6 +283,36 @@ struct ContinueStmt {
     explicit ContinueStmt(Token keyword) : keyword(std::move(keyword)) {}
 };
 
+// Switch case: stan value: { ... }
+struct SwitchCase {
+    ExprPtr value;      // nullptr for ghost (default)
+    std::vector<StmtPtr> body;
+    bool isDefault;
+
+    SwitchCase(ExprPtr value, std::vector<StmtPtr> body, bool isDefault = false)
+        : value(std::move(value)), body(std::move(body)), isDefault(isDefault) {}
+};
+
+// Switch statement: simp (expr) { stan val: { ... } ghost: { ... } }
+struct SwitchStmt {
+    Token keyword;
+    ExprPtr expression;
+    std::vector<SwitchCase> cases;
+
+    SwitchStmt(Token keyword, ExprPtr expression, std::vector<SwitchCase> cases)
+        : keyword(std::move(keyword)), expression(std::move(expression)), cases(std::move(cases)) {}
+};
+
+// Try-catch statement: yeet { ... } caught { ... }
+struct TryCatchStmt {
+    Token keyword;
+    StmtPtr tryBlock;
+    StmtPtr catchBlock;
+
+    TryCatchStmt(Token keyword, StmtPtr tryBlock, StmtPtr catchBlock)
+        : keyword(std::move(keyword)), tryBlock(std::move(tryBlock)), catchBlock(std::move(catchBlock)) {}
+};
+
 // Statement variant - holds any statement type
 using StmtVariant = std::variant<
     VarDeclStmt,
@@ -230,7 +325,9 @@ using StmtVariant = std::variant<
     FuncDefStmt,
     ReturnStmt,
     BreakStmt,
-    ContinueStmt
+    ContinueStmt,
+    SwitchStmt,
+    TryCatchStmt
 >;
 
 // Statement wrapper

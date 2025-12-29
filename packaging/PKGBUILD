@@ -1,0 +1,46 @@
+# Maintainer: Your Name <your.email@example.com>
+# Sigma Language - A Gen-Z themed programming language
+
+pkgname=sigma-lang
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="A Gen-Z themed programming language that compiles to native code via LLVM"
+arch=('x86_64' 'aarch64')
+url="https://github.com/YOUR_USERNAME/sigma-lang"
+license=('MIT')
+depends=('clang')
+makedepends=('cmake' 'llvm' 'git')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # Update with actual checksum after release
+
+build() {
+    cd "$pkgname-$pkgver"
+    mkdir -p build && cd build
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DSIGMA_STATIC=OFF
+    make -j$(nproc)
+}
+
+check() {
+    cd "$pkgname-$pkgver/build"
+    ./bin/sigma_tests
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    
+    # Install binary
+    install -Dm755 build/bin/sigma "$pkgdir/usr/bin/sigma"
+    
+    # Install documentation
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    
+    # Install license
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2>/dev/null || true
+    
+    # Install examples
+    install -dm755 "$pkgdir/usr/share/$pkgname/examples"
+    cp -r examples/* "$pkgdir/usr/share/$pkgname/examples/"
+}

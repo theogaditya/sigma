@@ -1,0 +1,9 @@
+#!/bin/bash
+#
+# Post-installation script for sigma-lang .deb package
+#
+
+set -e
+
+echo "Sigma Language installed successfully!"
+echo "Run 'sigma --help' to get started."

@@ -1,0 +1,194 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # ============================================================================
+  # Build for Ubuntu/Linux x86_64
+  # ============================================================================
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            llvm-18 \
+            llvm-18-dev \
+            clang-18 \
+            libzstd-dev \
+            zlib1g-dev
+
+      - name: Configure CMake
+        run: |
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+            -DSIGMA_STATIC=ON
+
+      - name: Build
+        run: cmake --build build --config $BUILD_TYPE -j$(nproc)
+
+      - name: Test
+        run: cd build && ./bin/sigma_tests
+
+      - name: Package binary
+        run: |
+          mkdir -p release
+          cp build/bin/sigma release/sigma-linux-x86_64
+          chmod +x release/sigma-linux-x86_64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigma-linux-x86_64
+          path: release/sigma-linux-x86_64
+
+  # ============================================================================
+  # Build for Ubuntu/Linux ARM64
+  # ============================================================================
+  build-linux-arm64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build in ARM64 container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./packaging/Dockerfile.arm64
+          platforms: linux/arm64
+          push: false
+          tags: sigma-build:arm64
+          outputs: type=local,dest=./out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigma-linux-arm64
+          path: out/sigma-linux-arm64
+        continue-on-error: true  # ARM64 build is optional
+
+  # ============================================================================
+  # Build for Windows x86_64
+  # ============================================================================
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM
+        run: |
+          choco install llvm --version=18.1.8 -y
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE
+
+      - name: Build
+        run: cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Package binary
+        run: |
+          mkdir release
+          copy build\bin\Release\sigma.exe release\sigma-windows-x86_64.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigma-windows-x86_64
+          path: release/sigma-windows-x86_64.exe
+
+  # ============================================================================
+  # Build for macOS (x86_64 and ARM64)
+  # ============================================================================
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM
+        run: |
+          brew install llvm@18
+          echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
+
+      - name: Configure CMake
+        run: |
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+            -DLLVM_CONFIG_EXECUTABLE=$(brew --prefix llvm@18)/bin/llvm-config
+
+      - name: Build
+        run: cmake --build build --config $BUILD_TYPE -j$(sysctl -n hw.ncpu)
+
+      - name: Package binary
+        run: |
+          mkdir -p release
+          cp build/bin/sigma release/sigma-macos-arm64
+          chmod +x release/sigma-macos-arm64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigma-macos-arm64
+          path: release/sigma-macos-arm64
+
+  # ============================================================================
+  # Create GitHub Release
+  # ============================================================================
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir release
+          # Linux x86_64
+          cp artifacts/sigma-linux-x86_64/sigma-linux-x86_64 release/
+          # Windows
+          cp artifacts/sigma-windows-x86_64/sigma-windows-x86_64.exe release/
+          # macOS
+          cp artifacts/sigma-macos-arm64/sigma-macos-arm64 release/
+          # Make Linux/macOS binaries executable
+          chmod +x release/sigma-linux-x86_64 release/sigma-macos-arm64
+          # Create checksums
+          cd release && sha256sum * > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}

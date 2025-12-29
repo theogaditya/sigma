@@ -13,10 +13,14 @@
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
 #include "ast/ASTPrinter.h"
+#include "semantic/TypeChecker.h"
 #include "codegen/CodeGen.h"
 #include "utils/Error.h"
 
-const std::string SIGMA_VERSION = "1.0.0";
+#define SIGMA_VERSION_MAJOR 1
+#define SIGMA_VERSION_MINOR 1
+#define SIGMA_VERSION_PATCH 0
+const std::string SIGMA_VERSION = "1.1.0";
 
 // ANSI color codes for terminal
 namespace Color {
@@ -77,9 +81,10 @@ void runLexer(const std::string& source, bool verbose = false) {
     }
 }
 
-// Run the full pipeline: lex -> parse -> codegen
+// Run the full pipeline: lex -> parse -> typecheck -> codegen
 void run(const std::string& source, const std::string& filename = "<stdin>", 
-         bool showTokens = false, bool showAST = false, bool emitIR = true) {
+         bool showTokens = false, bool showAST = false, bool emitIR = true,
+         bool skipTypeCheck = false) {
     // Reset error state
     sigma::ErrorReporter::reset();
     sigma::ErrorReporter::setCurrentFile(filename);
@@ -120,7 +125,17 @@ void run(const std::string& source, const std::string& filename = "<stdin>",
         std::cout << std::endl;
     }
 
-    // Step 4: Code Generation
+    // Step 4: Type Checking (semantic analysis)
+    if (!skipTypeCheck) {
+        sigma::TypeChecker typeChecker;
+        if (!typeChecker.analyze(program)) {
+            sigma::ErrorReporter::printErrors();
+            std::cerr << "\n" << sigma::ErrorReporter::errorCount() << " error(s) found." << std::endl;
+            return;
+        }
+    }
+
+    // Step 5: Code Generation
     if (emitIR) {
         sigma::CodeGen codegen;
         if (codegen.generate(program)) {
@@ -248,7 +263,15 @@ int compileAndRun(const std::string& source, const std::string& filename) {
         return 1;
     }
 
-    // Step 3: Code Generation
+    // Step 3: Type Checking
+    sigma::TypeChecker typeChecker;
+    if (!typeChecker.analyze(program)) {
+        sigma::ErrorReporter::printErrors();
+        std::cerr << "\n" << sigma::ErrorReporter::errorCount() << " error(s) found." << std::endl;
+        return 1;
+    }
+
+    // Step 4: Code Generation
     sigma::CodeGen codegen;
     if (!codegen.generate(program)) {
         std::cerr << "Code generation failed." << std::endl;
@@ -257,7 +280,7 @@ int compileAndRun(const std::string& source, const std::string& filename) {
 
     std::string ir = codegen.getIR();
 
-    // Step 4: Create temp directory for compilation
+    // Step 5: Create temp directory for compilation
     std::string tempDir = createTempDir();
     if (tempDir.empty()) {
         std::cerr << "Error: Could not create temp directory" << std::endl;
@@ -356,7 +379,15 @@ int compileToFile(const std::string& source, const std::string& filename, const 
         return 1;
     }
 
-    // Step 3: Code Generation
+    // Step 3: Type Checking
+    sigma::TypeChecker typeChecker;
+    if (!typeChecker.analyze(program)) {
+        sigma::ErrorReporter::printErrors();
+        std::cerr << "\n" << sigma::ErrorReporter::errorCount() << " error(s) found." << std::endl;
+        return 1;
+    }
+
+    // Step 4: Code Generation
     sigma::CodeGen codegen;
     if (!codegen.generate(program)) {
         std::cerr << "Code generation failed." << std::endl;
@@ -365,7 +396,7 @@ int compileToFile(const std::string& source, const std::string& filename, const 
 
     std::string ir = codegen.getIR();
 
-    // Step 4: Create temp directory for compilation
+    // Step 5: Create temp directory for compilation
     std::string tempDir = createTempDir();
     if (tempDir.empty()) {
         std::cerr << "Error: Could not create temp directory" << std::endl;
@@ -462,11 +493,9 @@ void printUsage() {
 void printVersion() {
     bool useColor = isTerminal();
     if (useColor) std::cout << Color::Bold << Color::Cyan;
-    std::cout << "Sigma Language Compiler";
+    std::cout << "sigma " << SIGMA_VERSION;
     if (useColor) std::cout << Color::Reset;
     std::cout << std::endl;
-    std::cout << "Version: " << SIGMA_VERSION << std::endl;
-    std::cout << "Built with LLVM" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
