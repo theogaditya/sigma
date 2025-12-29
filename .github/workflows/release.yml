@@ -10,13 +10,14 @@ on:
 
 env:
   BUILD_TYPE: Release
+  
 
 jobs:
   # ============================================================================
   # Build for Ubuntu/Linux x86_64
   # ============================================================================
   build-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -58,10 +59,11 @@ jobs:
           path: release/sigma-linux-x86_64
 
   # ============================================================================
-  # Build for Ubuntu/Linux ARM64
+  # Build for Ubuntu/Linux ARM64 (cross-compile)
   # ============================================================================
   build-linux-arm64:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    continue-on-error: true  # ARM64 build is optional
     steps:
       - uses: actions/checkout@v4
 
@@ -69,21 +71,26 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Build in ARM64 container
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./packaging/Dockerfile.arm64
-          platforms: linux/arm64
-          push: false
-          tags: sigma-build:arm64
-          outputs: type=local,dest=./out
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ubuntu:24.04 \
+            bash -c "
+              apt-get update && \
+              apt-get install -y build-essential cmake llvm-18 llvm-18-dev clang-18 libzstd-dev zlib1g-dev && \
+              mkdir -p build && cd build && \
+              cmake .. -DCMAKE_BUILD_TYPE=Release && \
+              make -j\$(nproc) && \
+              mkdir -p /workspace/release && \
+              cp bin/sigma /workspace/release/sigma-linux-arm64
+            "
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: sigma-linux-arm64
-          path: out/sigma-linux-arm64
-        continue-on-error: true  # ARM64 build is optional
+          path: release/sigma-linux-arm64
 
   # ============================================================================
   # Build for Windows x86_64
@@ -95,14 +102,24 @@ jobs:
 
       - name: Install LLVM
         run: |
-          choco install llvm --version=18.1.8 -y
+          # Use whatever LLVM version is available or install if needed
+          $llvmPath = "C:\Program Files\LLVM\bin"
+          if (Test-Path $llvmPath) {
+            Write-Host "LLVM already installed"
+          } else {
+            choco install llvm -y --no-progress
+          }
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+
+      - name: Verify LLVM
+        run: |
+          & "C:\Program Files\LLVM\bin\llvm-config.exe" --version
 
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          cmake .. -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE
+          cmake .. -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
@@ -110,7 +127,14 @@ jobs:
       - name: Package binary
         run: |
           mkdir release
-          copy build\bin\Release\sigma.exe release\sigma-windows-x86_64.exe
+          if (Test-Path "build\bin\Release\sigma.exe") {
+            copy "build\bin\Release\sigma.exe" "release\sigma-windows-x86_64.exe"
+          } elseif (Test-Path "build\bin\sigma.exe") {
+            copy "build\bin\sigma.exe" "release\sigma-windows-x86_64.exe"
+          } else {
+            Get-ChildItem -Recurse build | Where-Object { $_.Name -eq "sigma.exe" }
+            throw "sigma.exe not found"
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -119,7 +143,7 @@ jobs:
           path: release/sigma-windows-x86_64.exe
 
   # ============================================================================
-  # Build for macOS (x86_64 and ARM64)
+  # Build for macOS ARM64
   # ============================================================================
   build-macos:
     runs-on: macos-14
@@ -128,18 +152,37 @@ jobs:
 
       - name: Install LLVM
         run: |
-          brew install llvm@18
-          echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
+          brew update
+          brew install llvm@18 || brew install llvm
 
       - name: Configure CMake
         run: |
+          # Find LLVM - try llvm@18 first, then generic llvm
+          if [ -d "$(brew --prefix llvm@18)" ]; then
+            LLVM_PREFIX=$(brew --prefix llvm@18)
+          else
+            LLVM_PREFIX=$(brew --prefix llvm)
+          fi
+          echo "Using LLVM at: $LLVM_PREFIX"
+          export PATH="$LLVM_PREFIX/bin:$PATH"
+          
           mkdir build && cd build
           cmake .. \
             -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-            -DLLVM_CONFIG_EXECUTABLE=$(brew --prefix llvm@18)/bin/llvm-config
+            -DLLVM_CONFIG_EXECUTABLE=$LLVM_PREFIX/bin/llvm-config \
+            -DCMAKE_PREFIX_PATH=$LLVM_PREFIX
 
       - name: Build
-        run: cmake --build build --config $BUILD_TYPE -j$(sysctl -n hw.ncpu)
+        run: |
+          if [ -d "$(brew --prefix llvm@18)" ]; then
+            export PATH="$(brew --prefix llvm@18)/bin:$PATH"
+          else
+            export PATH="$(brew --prefix llvm)/bin:$PATH"
+          fi
+          cmake --build build --config $BUILD_TYPE -j$(sysctl -n hw.ncpu)
+
+      - name: Test
+        run: cd build && ./bin/sigma_tests
 
       - name: Package binary
         run: |
@@ -174,15 +217,17 @@ jobs:
         run: |
           mkdir release
           # Linux x86_64
-          cp artifacts/sigma-linux-x86_64/sigma-linux-x86_64 release/
+          cp artifacts/sigma-linux-x86_64/sigma-linux-x86_64 release/ || true
           # Windows
-          cp artifacts/sigma-windows-x86_64/sigma-windows-x86_64.exe release/
+          cp artifacts/sigma-windows-x86_64/sigma-windows-x86_64.exe release/ || true
           # macOS
-          cp artifacts/sigma-macos-arm64/sigma-macos-arm64 release/
-          # Make Linux/macOS binaries executable
-          chmod +x release/sigma-linux-x86_64 release/sigma-macos-arm64
+          cp artifacts/sigma-macos-arm64/sigma-macos-arm64 release/ || true
+          # Linux ARM64 (optional)
+          cp artifacts/sigma-linux-arm64/sigma-linux-arm64 release/ 2>/dev/null || true
+          # Make binaries executable
+          chmod +x release/sigma-* 2>/dev/null || true
           # Create checksums
-          cd release && sha256sum * > SHA256SUMS.txt
+          cd release && sha256sum * > SHA256SUMS.txt 2>/dev/null || true
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
